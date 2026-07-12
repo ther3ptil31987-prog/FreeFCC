@@ -130,7 +130,8 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
                 rounds = profile.rounds,
                 interFrameDelayMs = profile.interFrameDelay,
                 interRoundDelayMs = profile.interRoundDelay,
-                readWindowMs = profile.readWindowMs
+                readWindowMs = profile.readWindowMs,
+                port = profile.port
             ) { progress -> update { copy(busyProgress = progress) } }
 
             if (success) {
@@ -198,9 +199,8 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
     // --- FCC ---
 
     /**
-     * Sends the 21-frame FCC unlock profile. Runs the full sequence twice
-     * with a 1-second delay between runs for reliability. The JSON profile
-     * already specifies 2 rounds internally, so this gives 4 total passes.
+     * Sends the 21-frame FCC unlock profile (2 rounds, 150ms between frames).
+     * The profile already runs 2 rounds internally for reliability.
      */
     fun enableFcc() {
         update { copy(status = "applying", isBusy = true, busyProgress = 0f, message = "Enabling FCC mode...") }
@@ -210,32 +210,16 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
             val profile = Profiles.load(app, "fcc.json")
             log("Loaded FCC profile: ${profile.frames.size} frames, ${profile.rounds} rounds")
 
-            var anySuccess = false
+            val success = transport.sendFrames(
+                frames = profile.frames,
+                rounds = profile.rounds,
+                interFrameDelayMs = profile.interFrameDelay,
+                interRoundDelayMs = profile.interRoundDelay,
+                readWindowMs = profile.readWindowMs,
+                port = profile.port
+            ) { progress -> update { copy(busyProgress = progress) } }
 
-            // Run the full profile twice with a 1-second delay for reliability
-            for (attempt in 0 until 2) {
-                if (attempt > 0) {
-                    log("FCC retry ${attempt + 1}...")
-                    delay(1000)
-                }
-
-                val success = transport.sendFrames(
-                    frames = profile.frames,
-                    rounds = profile.rounds,
-                    interFrameDelayMs = profile.interFrameDelay,
-                    interRoundDelayMs = profile.interRoundDelay,
-                    readWindowMs = profile.readWindowMs,
-                    port = profile.port
-                ) { progress ->
-                    // Scale progress across both attempts: 0..0.5 for first, 0.5..1 for second
-                    val scaled = (attempt + progress) / 2f
-                    update { copy(busyProgress = scaled) }
-                }
-
-                if (success) anySuccess = true
-            }
-
-            if (anySuccess) {
+            if (success) {
                 update {
                     copy(
                         status = "fcc_enabled",
@@ -289,6 +273,7 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
     /**
      * Sends the 128-frame 4G activation profile.
      * The aircraft serial is embedded in each frame's payload at runtime.
+     * 4G frames are sent via Unix domain socket (/duss/mb/0x205), not TCP.
      */
     fun enable4g() {
         update { copy(is4gBusy = true, busyProgress = 0f, message = "Turning 4G on...") }
@@ -305,21 +290,20 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
             }
 
             val profile = Profiles.load4g(app, serial)
-            log("Loaded 4G profile: ${profile.frames.size} frames")
+            log("Loaded 4G profile: ${profile.frames.size} frames (serial: $serial)")
 
-            val success = transport.sendFrames(
+            // 4G uses Unix domain socket, not TCP
+            val success = transport.sendFramesUnix(
                 frames = profile.frames,
-                rounds = profile.rounds,
-                interFrameDelayMs = profile.interFrameDelay,
-                readWindowMs = profile.readWindowMs
+                interFrameDelayMs = profile.interFrameDelay
             ) { progress -> update { copy(busyProgress = progress) } }
 
             if (success) {
                 update { copy(is4gEnabled = true, is4gBusy = false, busyProgress = 0f, message = "4G enabled") }
-                log("4G enabled — ${profile.frames.size} frames sent")
+                log("4G enabled — ${profile.frames.size} frames sent via Unix socket")
             } else {
-                update { copy(is4gBusy = false, message = "4G apply failed — RC link unreachable") }
-                log("4G apply failed")
+                update { copy(is4gBusy = false, message = "4G apply failed — is the 4G dongle connected?") }
+                log("4G apply failed — Unix socket unreachable")
             }
         }
     }

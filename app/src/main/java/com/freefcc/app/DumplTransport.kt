@@ -1,5 +1,7 @@
 package com.freefcc.app
 
+import android.net.LocalSocket
+import android.net.LocalSocketAddress
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -241,19 +243,35 @@ class DumplTransport {
     }
 
     /**
-     * Opens a raw socket and reads data, looking for an aircraft serial
-     * number matching W[AM]xxx (e.g. WA341, WM630).
+     * Probes for the aircraft serial number.
      *
-     * The DUMPL proxy emits telemetry when the aircraft is connected.
+     * Tries multiple methods:
+     * 1. Passive listen on TCP 40009 for telemetry matching 1581XXXXXXXXXXX (aircraft serial)
+     * 2. Also tries the old W[AM]xxx model code pattern as fallback
+     *
+     * The aircraft serial (1581...) is what 4G activation needs in its payload.
+     * The model code (WA341, WM630) is shorter and used for display only.
      */
     fun probeSerial(timeoutMs: Int = 1500): String {
+        // Try the full aircraft serial pattern first (1581 + 12-18 alphanumeric chars)
+        val result = listenForSerial(Regex("1581[0-9A-Za-z]{12,18}"), timeoutMs)
+        if (result.isNotEmpty()) return result
+
+        // Fallback: try the model code pattern (W[AM]xxx)
+        return listenForSerial(Regex("W[AM][0-9]{3}"), timeoutMs)
+    }
+
+    /**
+     * Opens a TCP socket to the DUMPL proxy and listens for data
+     * matching the given regex pattern.
+     */
+    private fun listenForSerial(pattern: Regex, timeoutMs: Int): String {
         var socket: Socket? = null
         try {
             socket = Socket()
             socket.connect(InetSocketAddress(HOST, PORT), 2000)
             socket.soTimeout = 200
 
-            val serialPattern = Regex("W[AM][0-9]{3}")
             val buffer = StringBuilder()
             val buf = ByteArray(4096)
             val input = socket.getInputStream()
@@ -264,7 +282,7 @@ class DumplTransport {
                     val n = input.read(buf)
                     if (n > 0) {
                         buffer.append(String(buf, 0, n))
-                        serialPattern.find(buffer.toString())?.let { return it.value }
+                        pattern.find(buffer.toString())?.let { return it.value }
                     }
                 } catch (_: IOException) { /* read timeout — keep trying */ }
             }
@@ -286,6 +304,10 @@ class DumplTransport {
 
     // --- Internal helpers ---
 
+    /**
+     * Sends a single frame via TCP. Used for FCC, CE, LED, device info.
+     * Waits for the ACK so the controller has time to process the frame.
+     */
     private fun sendOneFrame(frame: ByteArray, readWindowMs: Int, port: Int = PORT): Boolean {
         var socket: Socket? = null
         try {
@@ -305,6 +327,48 @@ class DumplTransport {
         finally { try { socket?.close() } catch (_: IOException) {} }
     }
 
+    /**
+     * Sends a single frame via Unix domain socket (abstract namespace).
+     * Used for 4G activation. Fire-and-forget: write, flush, close.
+     * No ACK read — the 4G module doesn't respond on this socket.
+     */
+    private fun sendOneFrameUnix(frame: ByteArray): Boolean {
+        var socket: LocalSocket? = null
+        try {
+            socket = LocalSocket()
+            socket.connect(LocalSocketAddress(UNIX_SOCKET_4G, LocalSocketAddress.Namespace.ABSTRACT))
+            socket.soTimeout = 500
+
+            socket.getOutputStream().apply { write(frame); flush() }
+            return true
+        } catch (_: IOException) { return false }
+        finally { try { socket?.close() } catch (_: IOException) {} }
+    }
+
+    /**
+     * Sends a list of frames via Unix domain socket for 4G activation.
+     * Fire-and-forget: no ACK read, just write and close per frame.
+     */
+    fun sendFramesUnix(
+        frames: List<ByteArray>,
+        interFrameDelayMs: Long = 10,
+        onProgress: (Float) -> Unit = {}
+    ): Boolean {
+        var anySuccess = false
+        val total = frames.size
+        var sent = 0
+
+        for (frame in frames) {
+            if (sendOneFrameUnix(frame)) {
+                anySuccess = true
+            }
+            sent++
+            onProgress(sent.toFloat() / total)
+            if (interFrameDelayMs > 0) Thread.sleep(interFrameDelayMs)
+        }
+        return anySuccess
+    }
+
     private fun readBytes(input: java.io.InputStream, count: Int): ByteArray? {
         val out = ByteArray(count)
         var read = 0
@@ -318,7 +382,9 @@ class DumplTransport {
 
     companion object {
         private const val HOST = "127.0.0.1"
-        const val PORT = 40009       // Standard DUMPL proxy port (FCC, 4G, RID)
-        const val PORT_LED = 40007   // LED control port (different from standard)
+        const val PORT = 40009       // Standard DUMPL proxy port (FCC, CE, device info)
+        const val PORT_LED = 40007   // LED control port
+        // 4G frames go via Unix domain socket, not TCP
+        private const val UNIX_SOCKET_4G = "/duss/mb/0x205"
     }
 }

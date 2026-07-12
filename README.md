@@ -170,6 +170,22 @@ Each command is a small binary packet with a magic byte (`0x55`), a header with 
 
 128 frames sent in a single round with 10ms between each. Each frame carries the aircraft's serial number in its payload. The serial is read from the controller at runtime by listening for telemetry on the DUMPL socket.
 
+**How 4G activation works:**
+
+Unlike FCC which goes through the standard DUMPL TCP proxy on port 40009, 4G frames are sent via a Unix domain socket at `/duss/mb/0x205` (abstract namespace). This is a separate DJI internal command bus that talks directly to the cellular/4G module. The app opens a new `LocalSocket` connection for each frame, writes the frame bytes, flushes, and closes. No ACK is read back since the 4G module does not respond on this socket.
+
+The frame format is:
+- `sender = 2` (CAMERA)
+- `cmd_type = 0` (Request, NO_ACK_NEEDED, no encryption)
+- `cmd_set = 81` (0x51, 4G command set)
+- `cmd_id = 0..127` (sequential, one per frame)
+- `dst = 238` (0xEE, OFDM_GROUND index 7)
+- `payload = 000000 + ASCII(aircraft_serial)`
+
+The aircraft serial is probed by listening on TCP port 40009 for telemetry data. The serial format is typically `1581XXXXXXXXXXX` (16-20 alphanumeric characters). If the full serial is not found, the app falls back to the shorter model code pattern `W[AM]xxx`.
+
+4G activation requires a DJI Cellular Dongle 2 to be physically connected to the aircraft. Without the dongle, the Unix socket `/duss/mb/0x205` will not exist and the frames will fail to send.
+
 ### Profile Format
 
 Profiles are JSON files in `app/src/main/assets/profiles/`. Each frame looks like this:
