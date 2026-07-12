@@ -1,0 +1,355 @@
+package com.freefcc.app
+
+import android.app.Application
+import android.os.Build
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * Immutable UI state. The ViewModel updates this via copy(), and the
+ * Compose layer observes it with collectAsStateWithLifecycle().
+ */
+data class AppState(
+    val status: String = "idle",
+    val message: String = "",
+    val isConnected: Boolean = false,
+    val isFccEnabled: Boolean = false,
+    val is4gEnabled: Boolean = false,
+    val is4gBusy: Boolean = false,
+    val isBusy: Boolean = false,
+    val busyProgress: Float = 0f,
+    val aircraftSerial: String = "",
+    val controllerModel: String = "",
+    val deviceInfo: String = "",
+    val isQueryingInfo: Boolean = false,
+    val logMessages: List<String> = emptyList()
+)
+
+/**
+ * Manages all app state and business logic.
+ *
+ * The UI never touches the transport layer directly — it calls methods
+ * on this ViewModel, which runs operations on a background thread and
+ * updates the observable [state] flow.
+ */
+class FccViewModel(private val app: Application) : AndroidViewModel(app) {
+
+    private val _state = MutableStateFlow(AppState())
+    val state: StateFlow<AppState> = _state.asStateFlow()
+
+    private val transport = DumplTransport()
+
+    fun init() {
+        val model = try { Build.DEVICE } catch (_: Exception) { "unknown" }
+        update { copy(controllerModel = model, status = "disconnected") }
+    }
+
+    // --- Connection ---
+
+    /**
+     * Checks if the DUMPL proxy at 127.0.0.1:40009 is reachable.
+     * If connected, reads the aircraft serial number.
+     */
+    fun connect() {
+        update { copy(status = "connecting", message = "Connecting to controller...") }
+        log("Connecting to controller...")
+
+        runOnIO {
+            if (transport.isReachable()) {
+                log("Controller connected")
+                val serial = transport.probeSerial(1500)
+                update {
+                    copy(
+                        status = "connected",
+                        message = if (serial.isNotEmpty()) "Connected — $serial" else "Connected. Ready to apply FCC.",
+                        isConnected = true,
+                        aircraftSerial = serial
+                    )
+                }
+                if (serial.isNotEmpty()) log("Aircraft serial: $serial")
+            } else {
+                update {
+                    copy(
+                        status = "disconnected",
+                        message = "Controller not found. Make sure the drone is powered on and linked.",
+                        isConnected = false
+                    )
+                }
+                log("Connection failed — is the drone powered on?")
+            }
+        }
+    }
+
+    // --- FCC ---
+
+    /** Sends the 21-frame FCC unlock profile (2 rounds, 150ms between frames). */
+    fun enableFcc() {
+        update { copy(status = "applying", isBusy = true, busyProgress = 0f, message = "Enabling FCC mode...") }
+        log("Enabling FCC mode...")
+
+        runOnIO {
+            val profile = Profiles.load(app, "fcc.json")
+            log("Loaded FCC profile: ${profile.frames.size} frames, ${profile.rounds} rounds")
+
+            val success = transport.sendFrames(
+                frames = profile.frames,
+                rounds = profile.rounds,
+                interFrameDelayMs = profile.interFrameDelay,
+                interRoundDelayMs = profile.interRoundDelay,
+                readWindowMs = profile.readWindowMs
+            ) { progress -> update { copy(busyProgress = progress) } }
+
+            if (success) {
+                update {
+                    copy(
+                        status = "fcc_enabled",
+                        message = "FCC mode enabled",
+                        isFccEnabled = true,
+                        isBusy = false,
+                        busyProgress = 1f,
+                        isConnected = true
+                    )
+                }
+                log("FCC mode enabled — ${profile.frames.size} frames sent")
+            } else {
+                update {
+                    copy(
+                        status = "connected",
+                        message = "FCC apply failed — RC link unreachable. Make sure the drone is on and linked.",
+                        isBusy = false,
+                        busyProgress = 0f
+                    )
+                }
+                log("FCC apply failed — writes failed")
+            }
+        }
+    }
+
+    /** Sends the CE restore command — a single frame that resets to factory region. */
+    fun disableFcc() {
+        update { copy(status = "restoring", isBusy = true, busyProgress = 0f, message = "Restoring CE mode...") }
+        log("Restoring CE mode...")
+
+        runOnIO {
+            val profile = Profiles.load(app, "ce_restore.json")
+            val success = transport.sendFrames(
+                frames = profile.frames,
+                rounds = profile.rounds,
+                readWindowMs = profile.readWindowMs
+            )
+
+            if (success) {
+                update { copy(status = "connected", message = "CE mode restored", isFccEnabled = false, isBusy = false) }
+                log("CE mode restored")
+            } else {
+                update { copy(status = "connected", message = "CE restore failed — RC link unreachable", isBusy = false) }
+                log("CE restore failed")
+            }
+        }
+    }
+
+    // --- 4G ---
+
+    /**
+     * Sends the 128-frame 4G activation profile.
+     * The aircraft serial is embedded in each frame's payload.
+     */
+    fun enable4g() {
+        update { copy(is4gBusy = true, busyProgress = 0f, message = "Turning 4G on...") }
+        log("Enabling 4G...")
+
+        runOnIO {
+            val serial = getOrProbeSerial()
+            if (serial.isEmpty()) {
+                update {
+                    copy(is4gBusy = false, message = "4G needs the aircraft connected. Power on the drone and try again.")
+                }
+                log("4G failed — no aircraft serial")
+                return@runOnIO
+            }
+
+            val profile = Profiles.load4g(app, serial)
+            log("Loaded 4G profile: ${profile.frames.size} frames")
+
+            val success = transport.sendFrames(
+                frames = profile.frames,
+                rounds = profile.rounds,
+                interFrameDelayMs = profile.interFrameDelay,
+                readWindowMs = profile.readWindowMs
+            ) { progress -> update { copy(busyProgress = progress) } }
+
+            if (success) {
+                update { copy(is4gEnabled = true, is4gBusy = false, busyProgress = 0f, message = "4G enabled") }
+                log("4G enabled — ${profile.frames.size} frames sent")
+            } else {
+                update { copy(is4gBusy = false, message = "4G apply failed — RC link unreachable") }
+                log("4G apply failed")
+            }
+        }
+    }
+
+    /** Disables 4G by re-applying FCC (keeps FCC on) or restoring CE. */
+    fun disable4g() {
+        update { copy(is4gBusy = true, message = "Turning 4G off...") }
+        log("Disabling 4G...")
+
+        runOnIO {
+            if (_state.value.isFccEnabled) {
+                val fcc = Profiles.load(app, "fcc.json")
+                transport.sendFrames(fcc.frames, 1, fcc.interFrameDelay, 0, fcc.readWindowMs)
+                log("FCC re-applied (4G off)")
+            } else {
+                val ce = Profiles.load(app, "ce_restore.json")
+                transport.sendFrames(ce.frames, 1, ce.interFrameDelay, 0, ce.readWindowMs)
+                log("CE restored (4G off)")
+            }
+            update {
+                copy(
+                    is4gEnabled = false,
+                    is4gBusy = false,
+                    message = if (isFccEnabled) "4G disabled — FCC still active" else "4G disabled — CE restored"
+                )
+            }
+            log("4G disabled")
+        }
+    }
+
+    // --- Device Info ---
+
+    /**
+     * Queries the controller for hardware version, bootloader version, and
+     * app version via the GENERAL VersionInquiry command (cmd_set=0, cmd_id=1).
+     */
+    fun queryDeviceInfo() {
+        if (!isControllerReachable()) return
+
+        update { copy(isQueryingInfo = true) }
+        log("Querying device info...")
+
+        runOnIO {
+            val profile = Profiles.load(app, "device_info.json")
+            val frame = profile.frames.first()
+
+            val response = transport.sendAndReceive(frame, profile.readWindowMs)
+
+            if (response == null || response.isEmpty()) {
+                update { copy(isQueryingInfo = false, deviceInfo = "No response from controller") }
+                log("Device info: no response")
+                return@runOnIO
+            }
+
+            val info = formatVersionResponse(response)
+            update { copy(isQueryingInfo = false, deviceInfo = info) }
+            log("Device info received: ${response.size} bytes")
+        }
+    }
+
+    /** Re-probes for the aircraft serial number. */
+    fun probeSerial() {
+        log("Probing for aircraft serial...")
+        runOnIO {
+            val serial = transport.probeSerial(2000)
+            if (serial.isNotEmpty()) {
+                update { copy(aircraftSerial = serial) }
+                log("Aircraft serial: $serial")
+            } else {
+                log("No serial detected — is the aircraft powered on?")
+            }
+        }
+    }
+
+    // --- Helpers ---
+
+    private fun isControllerReachable(): Boolean {
+        if (_state.value.isConnected) return true
+        log("Connect to the controller first")
+        return false
+    }
+
+    private fun getOrProbeSerial(): String {
+        var serial = _state.value.aircraftSerial
+        if (serial.isEmpty()) {
+            log("Probing for aircraft serial...")
+            serial = transport.probeSerial(2000)
+            if (serial.isNotEmpty()) {
+                update { copy(aircraftSerial = serial) }
+                log("Aircraft serial: $serial")
+            }
+        }
+        return serial
+    }
+
+    /**
+     * Parses a DUML VersionInquiry response payload.
+     *
+     * Response format (from dji-firmware-tools DJIPayload_General_VersionInquiryRe):
+     *   byte  0     unknown
+     *   byte  1     unknown
+     *   bytes 2-17  hardware version (16-char ASCII string)
+     *   bytes 18-21 bootloader version (uint32 LE)
+     *   bytes 22-25 app version (uint32 LE)
+     *   ...
+     */
+    private fun formatVersionResponse(payload: ByteArray): String {
+        val lines = mutableListOf<String>()
+
+        if (payload.size >= 18) {
+            val hwVersion = String(payload, 2, 16, Charsets.US_ASCII).trimEnd('\u0000')
+            lines.add("Hardware: $hwVersion")
+        }
+
+        if (payload.size >= 22) {
+            val ldrVersion = readUInt32LE(payload, 18)
+            lines.add("Bootloader: ${formatVersion(ldrVersion)}")
+        }
+
+        if (payload.size >= 26) {
+            val appVersion = readUInt32LE(payload, 22)
+            lines.add("Firmware: ${formatVersion(appVersion)}")
+        }
+
+        // Add raw hex for debugging
+        lines.add("")
+        lines.add("Raw payload (${payload.size} bytes):")
+        lines.add(payload.joinToString(" ") { "%02x".format(it) })
+
+        return lines.joinToString("\n")
+    }
+
+    private fun readUInt32LE(data: ByteArray, offset: Int): Long {
+        return ((data[offset].toLong() and 0xFF)) or
+               ((data[offset + 1].toLong() and 0xFF) shl 8) or
+               ((data[offset + 2].toLong() and 0xFF) shl 16) or
+               ((data[offset + 3].toLong() and 0xFF) shl 24)
+    }
+
+    private fun formatVersion(version: Long): String {
+        val major = (version shr 24) and 0xFF
+        val minor = (version shr 16) and 0xFF
+        val patch = (version shr 8) and 0xFF
+        val build = version and 0xFF
+        return "$major.$minor.$patch.$build"
+    }
+
+    private fun update(block: AppState.() -> AppState) {
+        _state.value = _state.value.block()
+    }
+
+    private fun log(message: String) {
+        val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+        val entry = "[$time] $message"
+        update { copy(logMessages = (listOf(entry) + logMessages).take(50)) }
+    }
+
+    private fun runOnIO(block: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) { block() }
+    }
+}
