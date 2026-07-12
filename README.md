@@ -134,9 +134,11 @@ Open the DJI Fly app and go to the Transmission tab. Look at the horizontal bar 
 
 ## Support
 
-FreeFCC is free and open source under AGPL-3.0. If it saved you some money or just made your day better, consider buying a coffee:
+If FreeFCC helped you out, please consider starring the repo and buying me a coffee. It helps cover server costs and keeps development going.
 
 <div align="center">
+
+[![Star on GitHub](https://img.shields.io/badge/Star%20on%20GitHub-%E2%AD%90-yellow?style=for-the-badge&logo=github)](https://github.com/doesthings/FreeFCC)
 
 [![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/freefcc)
 
