@@ -367,7 +367,7 @@ private fun FccPage(state: AppState, viewModel: FccViewModel) {
                     Text("Auto-FCC", color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Automatically connect and enable FCC when the app opens.",
+                        "Auto-connect, apply FCC, start keepalive, and launch DJI Fly.",
                         color = TextGray,
                         fontSize = 12.sp,
                         lineHeight = 17.sp

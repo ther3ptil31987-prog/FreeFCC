@@ -120,7 +120,8 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /**
      * Connects to the controller and applies FCC mode automatically.
-     * Waits for connection, then sends the FCC profile.
+     * Waits for connection, then sends the FCC profile, starts the keepalive
+     * service, and launches DJI Fly.
      */
     private fun autoConnectAndApply() {
         if (!beginHardwareOp()) {
@@ -158,8 +159,8 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
 
                 // Apply FCC
                 delay(500)
-                update { copy(status = "applying", isBusy = true, busyProgress = 0f, message = "Auto-enabling FCC...") }
-                log("Auto-FCC: enabling FCC mode...")
+                update { copy(status = "applying", isBusy = true, busyProgress = 0f, message = "Applying FCC mode...") }
+                log("Auto-FCC: applying FCC mode...")
 
                 val profile = Profiles.load(app, "fcc.json")
                 val success = transport.sendFrames(
@@ -175,7 +176,7 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
                     update {
                         copy(
                             status = "fcc_enabled",
-                            message = "FCC mode enabled (auto)",
+                            message = "FCC enabled. Starting keepalive...",
                             isFccEnabled = true,
                             isBusy = false,
                             busyProgress = 1f,
@@ -183,6 +184,18 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
                         )
                     }
                     log("Auto-FCC: FCC mode enabled")
+
+                    // Auto-start keepalive
+                    delay(500)
+                    update { copy(isKeepaliveRunning = true) }
+                    FccKeepaliveService.start(app)
+                    log("Auto-FCC: keepalive started (re-applying every 2s)")
+
+                    // Auto-launch DJI Fly
+                    delay(500)
+                    update { copy(message = "FCC active. Launching DJI Fly...") }
+                    log("Auto-FCC: launching DJI Fly")
+                    launchDjiFly()
                 } else {
                     update {
                         copy(

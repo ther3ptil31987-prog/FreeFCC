@@ -56,9 +56,12 @@ object Profiles {
         val builder = DumplBuilder()
         val frames = (0 until framesArray.length()).map { i ->
             val f = framesArray.getJSONObject(i)
+            // Allow per-frame override of sender and cmd_type
+            val frameSender = if (f.has("sender")) f.getInt("sender") else sender
+            val frameCmdType = if (f.has("cmd_type")) f.getInt("cmd_type") else cmdType
             val inner = builder.buildFrame(DumplFrame(
-                sender = sender,
-                cmdType = cmdType,
+                sender = frameSender,
+                cmdType = frameCmdType,
                 cmdSet = f.getInt("s"),
                 cmdId = f.getInt("i"),
                 dst = f.getInt("d"),
