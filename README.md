@@ -8,7 +8,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/doesthings/FreeFCC?style=flat-square)](https://github.com/doesthings/FreeFCC/releases)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20this%20project-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/freefcc)
 
-A free and open-source Android app that unlocks FCC mode, enables 4G transmission, and queries device info on DJI controllers. Currently only tested on the RC2. No server. No license. No tracking. Just raw DUMPL commands from JSON profile files.
+A free and open-source Android app that unlocks FCC mode, removes altitude limits (up to 3000m), removes distance limits, disables NFZ geofencing, enables 4G transmission, and queries device info on DJI controllers. Currently only tested on the RC2. No server. No license. No tracking. Just raw DUMPL commands from JSON profile files.
 
 </div>
 
@@ -31,7 +31,9 @@ A free and open-source Android app that unlocks FCC mode, enables 4G transmissio
 | Feature | Description |
 |---------|-------------|
 | **FCC Unlock** | Switches the radio from CE to FCC mode for higher power and more channels |
-| **Altitude Limit Removed** | Raises max flight altitude from 120m (CE limit) to 500m (FCC limit) |
+| **Altitude Unlock** | Raises max flight altitude to 3000m (from 120m CE / 500m FCC) by setting `height_limit_enabled=2` + `limit_height_abs=3000` |
+| **Distance Limit Removed** | Sets `max_distance_0/1=65535m` — removes the max distance geofence |
+| **NFZ Geofencing Disabled** | Sets `cfg_disable_airport_fly_limit=1` — disables no-fly-zone enforcement |
 | **4G Activation** | Enables 4G transmission on the aircraft (serial read at runtime) |
 | **LED Control** | Turn aircraft arm LEDs on or off (requires DJI Fly running with aircraft connected) |
 | **Device Info** | Queries the controller for hardware and firmware version |
