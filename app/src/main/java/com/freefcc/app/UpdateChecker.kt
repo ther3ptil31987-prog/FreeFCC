@@ -36,7 +36,7 @@ data class UpdateInfo(
             val n = new.getOrElse(i) { 0 }
             if (n != c) return n > c
         }
-        return true
+        return false
     }
 
     private fun parseVersion(v: String): List<Int> {
