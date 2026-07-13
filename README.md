@@ -77,9 +77,11 @@ The full guide with screenshots is on [freefcc.duckdns.org](https://freefcc.duck
 
 ### 1. Prep the SD card
 
-Download the helper apps zip and the FreeFCC APK. Extract the zip, drop the APK into the extracted folder, then move the whole thing onto a microSD card. Stick the card into your RC2.
+**Format the microSD card in the RC2 first.** Insert the card into the controller, then go to the RC2's storage settings and format it. If you skip this, the RC2 won't let you browse files on the card.
 
-> The RC2 won't install apps from internal storage, only from the SD card.
+Download the helper apps zip and the FreeFCC APK. Extract the zip, drop the APK into the extracted folder, then move the whole thing onto the microSD card. Stick the card into your RC2.
+
+> The RC2 won't install apps from internal storage, only from the SD card. The card must be formatted in the controller itself before it can be browsed.
 
 ### 2. Install the helper apps
 
