@@ -5,7 +5,6 @@ import android.content.Context
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,9 +77,6 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Serializes every controller-/aircraft-facing operation so frames never overlap. */
     private val hardwareMutex = Mutex()
-
-    /** Background keepalive job that re-applies FCC every 2s to prevent DJI Fly from resetting to CE. */
-    private var keepaliveJob: Job? = null
 
     /** Claims the hardware lock for one operation. Returns false if another is already running. */
     private fun beginHardwareOp(): Boolean {
@@ -343,44 +339,24 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
     // --- FCC Keepalive ---
 
     /**
-     * Starts a background loop that re-applies the FCC profile every 2 seconds.
+     * Starts a foreground service that re-applies the FCC profile every 2 seconds.
      * This prevents DJI Fly from resetting the radio back to CE mode when it
-     * connects to the drone. The loop runs until [stopKeepalive] is called.
-     *
-     * This is the same technique used by NLD FCC — continuously re-applying
-     * FCC so that even if DJI Fly resets to CE, it's flipped back within 2s.
+     * connects to the drone. The service runs independently of the Activity
+     * lifecycle so it keeps working when the user switches to DJI Fly.
      */
     fun startKeepalive() {
-        if (keepaliveJob?.isActive == true) {
+        if (_state.value.isKeepaliveRunning) {
             log("Keepalive already running")
             return
         }
         update { copy(isKeepaliveRunning = true) }
+        FccKeepaliveService.start(app)
         log("Started FCC keepalive — re-applying every 2s to prevent CE reset")
-
-        keepaliveJob = viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
-                try {
-                    val profile = Profiles.load(app, "fcc_keepalive.json")
-                    transport.sendFrames(
-                        frames = profile.frames,
-                        rounds = 1,
-                        interFrameDelayMs = profile.interFrameDelay,
-                        readWindowMs = profile.readWindowMs,
-                        port = profile.port
-                    )
-                } catch (_: Exception) {
-                    // Transport may be temporarily unavailable — keep trying
-                }
-                delay(2000)
-            }
-        }
     }
 
-    /** Stops the background keepalive loop. */
+    /** Stops the keepalive foreground service. */
     fun stopKeepalive() {
-        keepaliveJob?.cancel()
-        keepaliveJob = null
+        FccKeepaliveService.stop(app)
         update { copy(isKeepaliveRunning = false) }
         log("FCC keepalive stopped")
     }
@@ -389,22 +365,52 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /**
      * Launches the DJI Fly app (dji.go.v5) so the user can continue flying
-     * with FCC mode active. The keepalive loop keeps re-applying FCC in the
+     * with FCC mode active. The keepalive service keeps re-applying FCC in the
      * background while DJI Fly runs.
      */
     fun launchDjiFly() {
-        try {
-            val intent = app.packageManager.getLaunchIntentForPackage("dji.go.v5")
-            if (intent != null) {
-                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        val pm = app.packageManager
+        // Try the standard launch intent first
+        var intent = pm.getLaunchIntentForPackage("dji.go.v5")
+        if (intent != null) {
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
                 app.startActivity(intent)
                 log("Launched DJI Fly")
-            } else {
-                log("DJI Fly not installed on this controller")
-            }
-        } catch (e: Exception) {
-            log("Failed to launch DJI Fly: ${e.message}")
+                return
+            } catch (_: Exception) {}
         }
+
+        // Fallback: try explicit component — DJI Fly's main activity
+        for (activityName in listOf(
+            "dji.pilot2.lite.LauncherActivity",
+            "dji.go.v5.MainActivity",
+            "dji.pilot2.lite.LiteLauncherActivity",
+            "dji.go.v5.SplashActivity"
+        )) {
+            val explicitIntent = android.content.Intent().apply {
+                component = android.content.ComponentName("dji.go.v5", activityName)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                app.startActivity(explicitIntent)
+                log("Launched DJI Fly")
+                return
+            } catch (_: Exception) {}
+        }
+
+        // Fallback 2: try dji.go.v4
+        intent = pm.getLaunchIntentForPackage("dji.go.v4")
+        if (intent != null) {
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                app.startActivity(intent)
+                log("Launched DJI Go 4")
+                return
+            } catch (_: Exception) {}
+        }
+
+        log("DJI Fly not installed or cannot launch on this controller")
     }
 
     // --- 4G ---
@@ -652,30 +658,53 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
             val uri = androidx.core.content.FileProvider.getUriForFile(
                 app, "${app.packageName}.fileprovider", file
             )
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+
+            // Build the install intent
+            val installIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
             }
 
-            if (intent.resolveActivity(app.packageManager) != null) {
-                app.startActivity(intent)
+            // Try launching directly
+            var launched = false
+            try {
+                app.startActivity(installIntent)
+                launched = true
                 log("Launching installer...")
-            } else {
-                log("No installer found — use a file manager to open the APK")
-                val openIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
-                    flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_NO_HISTORY
-                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                val chooser = android.content.Intent.createChooser(openIntent, "Install FreeFCC").apply {
+            } catch (_: android.content.ActivityNotFoundException) {
+                // No activity handles ACTION_VIEW for APK — try chooser
+            }
+
+            if (!launched) {
+                val chooser = android.content.Intent.createChooser(installIntent, "Install FreeFCC").apply {
                     flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 try {
                     app.startActivity(chooser)
-                } catch (_: Exception) {
-                    log("Could not launch installer — copy APK from cache manually")
+                    launched = true
+                    log("Launching installer via chooser...")
+                } catch (_: android.content.ActivityNotFoundException) {
+                    // No chooser either
                 }
+            }
+
+            if (!launched) {
+                // Last resort: try the system package installer directly
+                val directIntent = android.content.Intent("com.android.packageinstaller.action.INSTALL_PACKAGE").apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                }
+                try {
+                    app.startActivity(directIntent)
+                    launched = true
+                    log("Launching system package installer...")
+                } catch (_: Exception) {
+                    // Still nothing
+                }
+            }
+
+            if (!launched) {
+                log("Could not launch installer — use a file manager to open the APK from cache")
             }
         } catch (e: Exception) {
             log("Install failed: ${e.message}")
