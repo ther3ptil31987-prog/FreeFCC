@@ -63,6 +63,7 @@ You need both. The helper apps let you sideload FreeFCC onto the RC2.
 | DJI Neo 1 | RC2 | Yes | Not tested | Not tested | FCC working |
 | DJI Neo 2 | RC2 | Yes | Not tested | Not tested | FCC working |
 | DJI Avata 360 | RC2 | Yes | Not tested | Not tested | FCC working |
+| DJI Air 3S | RC2 | Yes | Not tested | Not tested | FCC working |
 | Other RC2 aircraft | RC2 | Should work | Unknown | Unknown | FCC profile is universal |
 | DJI RC Pro 2 / RC Plus | All | Use [freefcc-launcher](https://github.com/doesthings/freefcc-launcher) | - | - | Not tested with this app |
 
