@@ -1,0 +1,18 @@
+{
+  "name": "FCC Keepalive",
+  "description": "Short re-apply sequence sent every 2s to keep FCC mode active and prevent DJI Fly from resetting to CE.",
+  "sender": 130,
+  "sender_desc": "MOBILE_APP, index 4",
+  "cmd_type": 32,
+  "cmd_type_desc": "Request, ACK_BEFORE_EXEC, no encryption",
+  "rounds": 1,
+  "inter_frame_delay_ms": 100,
+  "inter_round_delay_ms": 0,
+  "read_window_ms": 80,
+  "frames": [
+    { "s": 6,  "i": 114, "d": 6,   "p": "00000000000100",     "note": "RADIO set region param to FCC (01)" },
+    { "s": 4,  "i": 51,  "d": 3,   "p": "0001010000ffff2000", "note": "SET parameter — altitude unlock 0xFFFF + FCC flag 0x20" },
+    { "s": 6,  "i": 114, "d": 6,   "p": "000000000001ff",     "note": "RADIO commit region change" },
+    { "s": 9,  "i": 236, "d": 9,   "p": "0003",               "note": "RCLink keepalive (cmdSet=9, cmdId=0xEC)" }
+  ]
+}

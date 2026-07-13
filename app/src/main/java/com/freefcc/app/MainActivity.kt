@@ -193,6 +193,41 @@ private fun FccPage(state: AppState, viewModel: FccViewModel) {
                     GlowButton("Stop FCC Mode", Red, enabled = !state.isHardwareBusy) { viewModel.disableFcc() }
                     Spacer(Modifier.height(12.dp))
                     GlowButton("Re-Apply FCC", Cyan, filled = false, enabled = !state.isHardwareBusy) { viewModel.enableFcc() }
+                    Spacer(Modifier.height(12.dp))
+                    GlowButton("Launch DJI Fly", Green, filled = false, enabled = !state.isHardwareBusy) {
+                        viewModel.launchDjiFly()
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    // Keepalive toggle
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Keepalive", color = TextWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (state.isKeepaliveRunning) "Re-applying FCC every 2s to prevent CE reset"
+                                else "Keep FCC active while DJI Fly runs",
+                                color = if (state.isKeepaliveRunning) Green else TextGray,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = state.isKeepaliveRunning,
+                            onCheckedChange = { enabled ->
+                                if (enabled) viewModel.startKeepalive() else viewModel.stopKeepalive()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Green,
+                                checkedTrackColor = Green.copy(0.3f),
+                                uncheckedThumbColor = TextGray,
+                                uncheckedTrackColor = BgLight
+                            )
+                        )
+                    }
                 }
                 else -> {
                     if (state.message.isNotEmpty()) {
@@ -791,7 +826,7 @@ private fun SupportPage() {
             Spacer(Modifier.height(16.dp))
             DividerLine()
             Spacer(Modifier.height(16.dp))
-            InfoRow("Version", "1.4.01")
+            InfoRow("Version", "1.4.02")
             Spacer(Modifier.height(12.dp))
             InfoRow("License", "AGPL-3.0")
             Spacer(Modifier.height(12.dp))
@@ -844,7 +879,7 @@ private fun AppHeader(model: String) {
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            if (model.isNotEmpty()) "v1.4.01 · $model" else "v1.4.01",
+            if (model.isNotEmpty()) "v1.4.02 · $model" else "v1.4.02",
             color = TextDim,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium

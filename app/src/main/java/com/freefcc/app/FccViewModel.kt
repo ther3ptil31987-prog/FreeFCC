@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +49,9 @@ data class AppState(
     val updateDownloadProgress: Float = 0f,
     val isUpdateDownloaded: Boolean = false,
     val updateAvailable: Boolean = false,
-    val updateChecked: Boolean = false
+    val updateChecked: Boolean = false,
+    // Keepalive state
+    val isKeepaliveRunning: Boolean = false
 )
 
 /**
@@ -64,7 +67,7 @@ data class AppState(
 class FccViewModel(private val app: Application) : AndroidViewModel(app) {
 
     companion object {
-        const val APP_VERSION = "1.4.01"
+        const val APP_VERSION = "1.4.02"
     }
 
     private val _state = MutableStateFlow(AppState())
@@ -75,6 +78,9 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Serializes every controller-/aircraft-facing operation so frames never overlap. */
     private val hardwareMutex = Mutex()
+
+    /** Background keepalive job that re-applies FCC every 2s to prevent DJI Fly from resetting to CE. */
+    private var keepaliveJob: Job? = null
 
     /** Claims the hardware lock for one operation. Returns false if another is already running. */
     private fun beginHardwareOp(): Boolean {
@@ -331,6 +337,73 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
             } finally {
                 endHardwareOp()
             }
+        }
+    }
+
+    // --- FCC Keepalive ---
+
+    /**
+     * Starts a background loop that re-applies the FCC profile every 2 seconds.
+     * This prevents DJI Fly from resetting the radio back to CE mode when it
+     * connects to the drone. The loop runs until [stopKeepalive] is called.
+     *
+     * This is the same technique used by NLD FCC — continuously re-applying
+     * FCC so that even if DJI Fly resets to CE, it's flipped back within 2s.
+     */
+    fun startKeepalive() {
+        if (keepaliveJob?.isActive == true) {
+            log("Keepalive already running")
+            return
+        }
+        update { copy(isKeepaliveRunning = true) }
+        log("Started FCC keepalive — re-applying every 2s to prevent CE reset")
+
+        keepaliveJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                try {
+                    val profile = Profiles.load(app, "fcc_keepalive.json")
+                    transport.sendFrames(
+                        frames = profile.frames,
+                        rounds = 1,
+                        interFrameDelayMs = profile.interFrameDelay,
+                        readWindowMs = profile.readWindowMs,
+                        port = profile.port
+                    )
+                } catch (_: Exception) {
+                    // Transport may be temporarily unavailable — keep trying
+                }
+                delay(2000)
+            }
+        }
+    }
+
+    /** Stops the background keepalive loop. */
+    fun stopKeepalive() {
+        keepaliveJob?.cancel()
+        keepaliveJob = null
+        update { copy(isKeepaliveRunning = false) }
+        log("FCC keepalive stopped")
+    }
+
+    // --- Launch DJI Fly ---
+
+    /**
+     * Launches the DJI Fly app (dji.go.v5) so the user can continue flying
+     * with FCC mode active. The keepalive loop keeps re-applying FCC in the
+     * background while DJI Fly runs.
+     */
+    fun launchDjiFly() {
+        try {
+            val intent = app.packageManager.getLaunchIntentForPackage("dji.go.v5")
+            if (intent != null) {
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                app.startActivity(intent)
+                log("Launched DJI Fly")
+            } else {
+                log("DJI Fly not installed on this controller")
+            }
+        } catch (e: Exception) {
+            log("Failed to launch DJI Fly: ${e.message}")
         }
     }
 
