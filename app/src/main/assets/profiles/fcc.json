@@ -12,7 +12,7 @@
   "frames": [
     { "s": 16, "i": 88,  "d": 18,  "p": "030100",             "note": "AUTOTEST set: enter service mode (dst=SVO)" },
     { "s": 6,  "i": 114, "d": 6,   "p": "00000000000100",     "note": "RADIO set region param to FCC (01) (dst=REMOTE_RADIO)" },
-    { "s": 3,  "i": 223, "d": 3,   "p": "01",                 "note": "FLYCONTROLLER Assistant Unlock (cmd 0xDF, lock_state=1) — required before param writes on modern aircraft" },
+    { "s": 3,  "i": 223, "d": 3,   "p": "01000000",             "note": "FLYCONTROLLER Assistant Unlock (cmd 0xDF, lock_state=1 uint32) — required before param writes" },
     { "s": 3,  "i": 249, "d": 3,   "p": "8a237103b80b",       "note": "FLYCONTROLLER write max_height_0 = 3000m (ushort, cmd 0xF9)" },
     { "s": 3,  "i": 249, "d": 3,   "p": "8b237103b80b",       "note": "FLYCONTROLLER write max_height_1 = 3000m (ushort, cmd 0xF9, alternate table)" },
     { "s": 3,  "i": 249, "d": 3,   "p": "2e9bb38902",         "note": "FLYCONTROLLER write height_limit_enabled = 2 (uint8, UNLOCK MODE — disables height enforcement)" },
@@ -39,7 +39,7 @@
     { "s": 6,  "i": 140, "d": 9,   "p": "000300",             "note": "RADIO set parameter 03 (dst=LB_MCU_SKY)" },
     { "s": 6,  "i": 140, "d": 9,   "p": "000100",             "note": "RADIO set parameter 01 (dst=LB_MCU_SKY)" },
     { "s": 6,  "i": 114, "d": 6,   "p": "000000000001ff",     "note": "RADIO commit region change (dst=REMOTE_RADIO)" },
-    { "s": 3,  "i": 223, "d": 3,   "p": "00",                 "note": "FLYCONTROLLER Assistant re-lock (cmd 0xDF, lock_state=0)" },
+    { "s": 3,  "i": 223, "d": 3,   "p": "00000000",             "note": "FLYCONTROLLER Assistant re-lock (cmd 0xDF, lock_state=0 uint32)" },
     { "s": 16, "i": 88,  "d": 18,  "p": "030100",             "note": "AUTOTEST exit service mode (dst=SVO)" }
   ]
 }

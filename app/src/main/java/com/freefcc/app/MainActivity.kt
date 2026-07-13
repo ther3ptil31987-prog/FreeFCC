@@ -188,7 +188,7 @@ private fun FccPage(state: AppState, viewModel: FccViewModel) {
                     GlowButton("Connect", Cyan) { viewModel.connect() }
                 }
                 state.isFccEnabled -> {
-                    BodyText("FCC mode + altitude unlock active.", Green)
+                    BodyText("FCC mode is active.", Green)
                     Spacer(Modifier.height(20.dp))
                     GlowButton("Stop FCC Mode", Red) { viewModel.disableFcc() }
                     Spacer(Modifier.height(12.dp))
@@ -202,7 +202,7 @@ private fun FccPage(state: AppState, viewModel: FccViewModel) {
                         BodyText("Tap the button below to enable FCC mode.")
                         Spacer(Modifier.height(20.dp))
                     }
-                    GlowButton("Enable FCC + Altitude", Cyan) { viewModel.enableFcc() }
+                    GlowButton("Enable FCC Mode", Cyan) { viewModel.enableFcc() }
                 }
             }
 
@@ -777,8 +777,7 @@ private fun SupportPage() {
             Text("About", color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             BodyText(
-                "FreeFCC sends DUMPL commands to your DJI controller to unlock FCC mode, remove altitude limits (up to 3000m), " +
-                "remove distance limits, disable NFZ geofencing, and enable 4G. " +
+                "FreeFCC sends DUMPL commands to your DJI controller to unlock FCC mode and enable 4G. " +
                 "It works fully offline with no server or license. " +
                 "The protocol is publicly documented in the dji-firmware-tools project.",
                 TextGray
@@ -948,14 +947,14 @@ private fun ModeBadge(state: AppState) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                if (active) "FCC + Altitude Unlock" else "CE",
+                if (active) "FCC" else "CE",
                 color = if (active) Green else TextWhite,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Black
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                if (active) "High-power + 3000m ceiling + no NFZ" else "Default region",
+                if (active) "High-power region active" else "Default region",
                 color = if (active) Green.copy(0.7f) else TextGray,
                 fontSize = 12.sp
             )
