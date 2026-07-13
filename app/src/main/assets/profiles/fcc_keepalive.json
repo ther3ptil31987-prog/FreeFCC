@@ -1,6 +1,6 @@
 {
   "name": "FCC Keepalive",
-  "description": "Re-apply sequence sent every 2s to keep FCC mode active. Includes trigger commands, FCC radio re-apply, and altitude unlock payloads.",
+  "description": "Re-apply sequence sent every 2s. Matches exact keepalive used by other tools.",
   "sender": 130,
   "sender_desc": "MOBILE_APP, index 4",
   "cmd_type": 32,
@@ -10,16 +10,15 @@
   "inter_round_delay_ms": 0,
   "read_window_ms": 80,
   "frames": [
-    { "s": 0,  "i": 1,   "d": 40,  "p": "",        "sender": 2, "cmd_type": 64, "note": "SET trigger to receiver 0x28" },
-    { "s": 0,  "i": 1,   "d": 72,  "p": "",        "sender": 2, "cmd_type": 64, "note": "SET trigger to receiver 0x48" },
-    { "s": 0,  "i": 1,   "d": 1,   "p": "",        "sender": 2, "cmd_type": 64, "note": "SET trigger to receiver 0x01 (FC)" },
-    { "s": 0,  "i": 1,   "d": 85,  "p": "",        "sender": 2, "cmd_type": 64, "note": "SET trigger to receiver 0x55" },
-    { "s": 0,  "i": 1,   "d": 3,   "p": "",        "sender": 2, "cmd_type": 64, "note": "SET trigger to receiver 0x03 (FC)" },
-    { "s": 6,  "i": 114, "d": 6,   "p": "00000000000100",     "note": "RADIO set region param to FCC (01)" },
-    { "s": 4,  "i": 51,  "d": 3,   "p": "0001010000ffff2000", "note": "SET parameter — altitude unlock 0xFFFF + FCC flag 0x20" },
-    { "s": 6,  "i": 119, "d": 6,   "p": "010100ffff200000",   "note": "RADIO keepalive — altitude unlock 0xFFFF + FCC flag 0x20 (cmdid=0x77)" },
-    { "s": 6,  "i": 119, "d": 20,  "p": "010100ffff200000",   "note": "RADIO keepalive — to dst 0x14 (cmdid=0x77)" },
-    { "s": 4,  "i": 51,  "d": 3,   "p": "010100ffff200000004c452d35", "note": "SET parameter with LE-5 regulatory class — NOT C0 class (unlocks 120m cap)" },
+    { "s": 0,  "i": 1,   "d": 40,  "p": "", "sender": 2, "cmd_type": 64, "note": "SET trigger to 0x28" },
+    { "s": 0,  "i": 1,   "d": 72,  "p": "", "sender": 2, "cmd_type": 64, "note": "SET trigger to 0x48" },
+    { "s": 0,  "i": 1,   "d": 1,   "p": "", "sender": 2, "cmd_type": 64, "note": "SET trigger to 0x01 (FC)" },
+    { "s": 0,  "i": 1,   "d": 85,  "p": "", "sender": 2, "cmd_type": 64, "note": "SET trigger to 0x55" },
+    { "s": 0,  "i": 1,   "d": 3,   "p": "", "sender": 2, "cmd_type": 64, "note": "SET trigger to 0x03 (FC)" },
+    { "s": 6,  "i": 119, "d": 6,   "p": "010100ffff200000",   "note": "Keepalive: altitude unlock + FCC flag (dst=6)" },
+    { "s": 6,  "i": 119, "d": 20,  "p": "010100ffff200000",   "note": "Keepalive: altitude unlock + FCC flag (dst=20)" },
+    { "s": 9,  "i": 236, "d": 9,   "p": "0003",               "note": "RCLink keepalive (cmdset=9, cmdid=0xEC)" },
+    { "s": 6,  "i": 114, "d": 6,   "p": "00000000000100",     "note": "RADIO set region to FCC" },
     { "s": 6,  "i": 114, "d": 6,   "p": "000000000001ff",     "note": "RADIO commit region change" }
   ]
 }
