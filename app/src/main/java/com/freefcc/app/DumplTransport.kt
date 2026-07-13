@@ -158,9 +158,30 @@ class DumplBuilder {
  */
 class DumplTransport {
 
+    // Ports that DJI controllers may listen on for DUMPL commands.
+    // RC2 uses 40009. RC Pro 2 and RC Plus use 40007 or 8901-8904.
+    private val SCAN_PORTS = listOf(PORT, PORT_LED, 8901, 8902, 8903, 8904)
+
+    /**
+     * Finds which port the DUMPL proxy is listening on by trying each one.
+     * Caches the result so subsequent calls don't need to scan.
+     */
+    private var discoveredPort: Int = -1
+
+    private fun findWorkingPort(): Int {
+        if (discoveredPort > 0 && isReachable(discoveredPort)) return discoveredPort
+        for (p in SCAN_PORTS) {
+            if (isReachable(p)) {
+                discoveredPort = p
+                return p
+            }
+        }
+        return PORT // fallback to default
+    }
+
     /**
      * Sends a list of frames over multiple rounds, discarding ACKs.
-     * Used for fire-and-forget commands like FCC unlock.
+     * Automatically finds the correct DUMPL port for the controller type.
      *
      * @param onProgress Called with a 0..1 float as frames are sent
      * @return true if at least one frame was written successfully
@@ -174,13 +195,17 @@ class DumplTransport {
         port: Int = PORT,
         onProgress: (Float) -> Unit = {}
     ): Boolean {
+        // If port is the default (40009), scan for the actual working port.
+        // If port is explicitly set (e.g. 40007 for LED), use it directly.
+        val effectivePort = if (port == PORT) findWorkingPort() else port
+
         var anySuccess = false
         val totalSends = frames.size * rounds
         var sent = 0
 
         for (round in 0 until rounds) {
             for (frame in frames) {
-                if (sendOneFrame(frame, readWindowMs, port)) {
+                if (sendOneFrame(frame, readWindowMs, effectivePort)) {
                     anySuccess = true
                 }
                 sent++
@@ -314,14 +339,12 @@ class DumplTransport {
             socket = Socket()
             socket.connect(InetSocketAddress(HOST, port), 2000)
             socket.tcpNoDelay = true
-            socket.soTimeout = maxOf(readWindowMs, 200)
+            socket.soTimeout = maxOf(readWindowMs, 1)
 
             socket.getOutputStream().apply { write(frame); flush() }
 
             // Wait for the ACK so the controller has time to process
             try { socket.getInputStream().read(ByteArray(2048)) } catch (_: IOException) {}
-            // Small settle delay to ensure the controller finished processing
-            Thread.sleep(20)
             return true
         } catch (_: IOException) { return false }
         finally { try { socket?.close() } catch (_: IOException) {} }
@@ -335,9 +358,8 @@ class DumplTransport {
     private fun sendOneFrameUnix(frame: ByteArray): Boolean {
         var socket: LocalSocket? = null
         try {
-            socket = LocalSocket()
+            socket = LocalSocket(LocalSocket.SOCKET_DGRAM)
             socket.connect(LocalSocketAddress(UNIX_SOCKET_4G, LocalSocketAddress.Namespace.ABSTRACT))
-            socket.soTimeout = 500
 
             socket.getOutputStream().apply { write(frame); flush() }
             return true
