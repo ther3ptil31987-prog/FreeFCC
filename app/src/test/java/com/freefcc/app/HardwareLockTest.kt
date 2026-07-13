@@ -1,6 +1,5 @@
 package com.freefcc.app
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,29 +18,39 @@ class HardwareLockTest {
 
     @Test
     fun secondTryBeginFailsWhileFirstHoldsTheLock() {
-        assertTrue("lock must be free at test start", HardwareLock.tryBegin())
-        assertTrue(HardwareLock.busy.value)
+        val firstAcquired = HardwareLock.tryBegin()
+        try {
+            assertTrue("lock must be free at test start", firstAcquired)
+            assertTrue(HardwareLock.busy.value)
 
-        val secondAttempted = CountDownLatch(1)
-        val secondResult = AtomicBoolean(true)
+            val secondAttempted = CountDownLatch(1)
+            val secondResult = AtomicBoolean(true)
 
-        val secondThread = Thread {
-            secondResult.set(HardwareLock.tryBegin())
-            secondAttempted.countDown()
+            val secondThread = Thread {
+                secondResult.set(HardwareLock.tryBegin())
+                secondAttempted.countDown()
+            }
+            secondThread.start()
+
+            assertTrue(
+                "second thread's tryBegin() never ran",
+                secondAttempted.await(5, TimeUnit.SECONDS)
+            )
+            secondThread.join(5000)
+
+            assertFalse("second tryBegin() must fail while the first op still holds the lock", secondResult.get())
+        } finally {
+            // Only release what this test actually acquired — never unlock on behalf
+            // of another op, and never leak the lock into later tests on assertion failure.
+            if (firstAcquired) HardwareLock.end()
         }
-        secondThread.start()
-
-        assertTrue(
-            "second thread's tryBegin() never ran",
-            secondAttempted.await(5, TimeUnit.SECONDS)
-        )
-        secondThread.join(5000)
-
-        assertFalse("second tryBegin() must fail while the first op still holds the lock", secondResult.get())
-
-        HardwareLock.end()
         assertFalse(HardwareLock.busy.value)
-        assertTrue("lock must be free again after end()", HardwareLock.tryBegin())
-        HardwareLock.end()
+
+        val reacquired = HardwareLock.tryBegin()
+        try {
+            assertTrue("lock must be free again after end()", reacquired)
+        } finally {
+            if (reacquired) HardwareLock.end()
+        }
     }
 }
