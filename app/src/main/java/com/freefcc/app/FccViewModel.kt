@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,9 +28,10 @@ data class AppState(
     val message: String = "",
     val isConnected: Boolean = false,
     val isFccEnabled: Boolean = false,
-    val is4gEnabled: Boolean = false,
     val is4gBusy: Boolean = false,
+    val fourGMessage: String = "",
     val isBusy: Boolean = false,
+    val isHardwareBusy: Boolean = false,
     val busyProgress: Float = 0f,
     val aircraftSerial: String = "",
     val controllerModel: String = "",
@@ -71,6 +73,22 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
     private val transport = DumplTransport()
     private val prefs = app.getSharedPreferences("freefcc", Context.MODE_PRIVATE)
 
+    /** Serializes every controller-/aircraft-facing operation so frames never overlap. */
+    private val hardwareMutex = Mutex()
+
+    /** Claims the hardware lock for one operation. Returns false if another is already running. */
+    private fun beginHardwareOp(): Boolean {
+        if (!hardwareMutex.tryLock()) return false
+        update { copy(isHardwareBusy = true) }
+        return true
+    }
+
+    /** Releases the hardware lock. Must run in a finally block covering every exit path. */
+    private fun endHardwareOp() {
+        update { copy(isHardwareBusy = false) }
+        hardwareMutex.unlock()
+    }
+
     fun init() {
         val model = try { Build.DEVICE } catch (_: Exception) { "unknown" }
         val autoEnabled = prefs.getBoolean("auto_fcc", false)
@@ -103,71 +121,79 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
      * Waits for connection, then sends the FCC profile.
      */
     private fun autoConnectAndApply() {
+        if (!beginHardwareOp()) {
+            log("Auto-FCC skipped — another hardware operation is already running")
+            return
+        }
         runOnIO {
-            // Wait a moment for the UI to render
-            delay(1000)
+            try {
+                // Wait a moment for the UI to render
+                delay(1000)
 
-            // Try to connect — scans all known ports
-            update { copy(status = "connecting", message = "Auto-connecting...") }
-            if (!transport.connect()) {
-                log("Auto-FCC: controller not found — is the drone powered on?")
-                update { copy(status = "disconnected", message = "Controller not found. Auto-FCC will retry when you tap Connect.") }
-                return@runOnIO
-            }
-
-            log("Auto-FCC: controller connected")
-            val detectedPort = transport.getDetectedPort()
-            if (detectedPort > 0) {
-                log("DUMPL port detected: $detectedPort")
-            }
-            val serial = transport.probeSerial(1500)
-            update {
-                copy(
-                    status = "connected",
-                    isConnected = true,
-                    aircraftSerial = serial,
-                    message = "Connected. Auto-applying FCC..."
-                )
-            }
-            if (serial.isNotEmpty()) log("Aircraft serial: $serial")
-
-            // Apply FCC
-            delay(500)
-            update { copy(status = "applying", isBusy = true, busyProgress = 0f, message = "Auto-enabling FCC...") }
-            log("Auto-FCC: enabling FCC mode...")
-
-            val profile = Profiles.load(app, "fcc.json")
-            val success = transport.sendFrames(
-                frames = profile.frames,
-                rounds = profile.rounds,
-                interFrameDelayMs = profile.interFrameDelay,
-                interRoundDelayMs = profile.interRoundDelay,
-                readWindowMs = profile.readWindowMs,
-                port = profile.port
-            ) { progress -> update { copy(busyProgress = progress) } }
-
-            if (success) {
-                update {
-                    copy(
-                        status = "fcc_enabled",
-                        message = "FCC mode enabled (auto)",
-                        isFccEnabled = true,
-                        isBusy = false,
-                        busyProgress = 1f,
-                        isConnected = true
-                    )
+                // Try to connect — scans all known ports
+                update { copy(status = "connecting", message = "Auto-connecting...") }
+                if (!transport.connect()) {
+                    log("Auto-FCC: controller not found — is the drone powered on?")
+                    update { copy(status = "disconnected", message = "Controller not found. Auto-FCC will retry when you tap Connect.") }
+                    return@runOnIO
                 }
-                log("Auto-FCC: FCC mode enabled")
-            } else {
+
+                log("Auto-FCC: controller connected")
+                val detectedPort = transport.getDetectedPort()
+                if (detectedPort > 0) {
+                    log("DUMPL port detected: $detectedPort")
+                }
+                val serial = transport.probeSerial(1500)
                 update {
                     copy(
                         status = "connected",
-                        message = "Auto-FCC failed — try manually",
-                        isBusy = false,
-                        busyProgress = 0f
+                        isConnected = true,
+                        aircraftSerial = serial,
+                        message = "Connected. Auto-applying FCC..."
                     )
                 }
-                log("Auto-FCC: apply failed — try manually")
+                if (serial.isNotEmpty()) log("Aircraft serial: $serial")
+
+                // Apply FCC
+                delay(500)
+                update { copy(status = "applying", isBusy = true, busyProgress = 0f, message = "Auto-enabling FCC...") }
+                log("Auto-FCC: enabling FCC mode...")
+
+                val profile = Profiles.load(app, "fcc.json")
+                val success = transport.sendFrames(
+                    frames = profile.frames,
+                    rounds = profile.rounds,
+                    interFrameDelayMs = profile.interFrameDelay,
+                    interRoundDelayMs = profile.interRoundDelay,
+                    readWindowMs = profile.readWindowMs,
+                    port = profile.port
+                ) { progress -> update { copy(busyProgress = progress) } }
+
+                if (success) {
+                    update {
+                        copy(
+                            status = "fcc_enabled",
+                            message = "FCC mode enabled (auto)",
+                            isFccEnabled = true,
+                            isBusy = false,
+                            busyProgress = 1f,
+                            isConnected = true
+                        )
+                    }
+                    log("Auto-FCC: FCC mode enabled")
+                } else {
+                    update {
+                        copy(
+                            status = "connected",
+                            message = "Auto-FCC failed — try manually",
+                            isBusy = false,
+                            busyProgress = 0f
+                        )
+                    }
+                    log("Auto-FCC: apply failed — try manually")
+                }
+            } finally {
+                endHardwareOp()
             }
         }
     }
@@ -179,35 +205,43 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
      * Probes for the aircraft serial number after connecting.
      */
     fun connect() {
+        if (!beginHardwareOp()) {
+            log("Hardware busy — please wait for the current operation to finish.")
+            return
+        }
         update { copy(status = "connecting", message = "Connecting to controller...") }
         log("Connecting to controller...")
 
         runOnIO {
-            if (transport.connect()) {
-                log("Controller connected")
-                val detectedPort = transport.getDetectedPort()
-                if (detectedPort > 0) {
-                    log("DUMPL port detected: $detectedPort")
+            try {
+                if (transport.connect()) {
+                    log("Controller connected")
+                    val detectedPort = transport.getDetectedPort()
+                    if (detectedPort > 0) {
+                        log("DUMPL port detected: $detectedPort")
+                    }
+                    val serial = transport.probeSerial(1500)
+                    update {
+                        copy(
+                            status = "connected",
+                            message = if (serial.isNotEmpty()) "Connected — $serial" else "Connected. Ready to apply FCC.",
+                            isConnected = true,
+                            aircraftSerial = serial
+                        )
+                    }
+                    if (serial.isNotEmpty()) log("Aircraft serial: $serial")
+                } else {
+                    update {
+                        copy(
+                            status = "disconnected",
+                            message = "Controller not found. Make sure the drone is powered on and linked.",
+                            isConnected = false
+                        )
+                    }
+                    log("Connection failed — is the drone powered on?")
                 }
-                val serial = transport.probeSerial(1500)
-                update {
-                    copy(
-                        status = "connected",
-                        message = if (serial.isNotEmpty()) "Connected — $serial" else "Connected. Ready to apply FCC.",
-                        isConnected = true,
-                        aircraftSerial = serial
-                    )
-                }
-                if (serial.isNotEmpty()) log("Aircraft serial: $serial")
-            } else {
-                update {
-                    copy(
-                        status = "disconnected",
-                        message = "Controller not found. Make sure the drone is powered on and linked.",
-                        isConnected = false
-                    )
-                }
-                log("Connection failed — is the drone powered on?")
+            } finally {
+                endHardwareOp()
             }
         }
     }
@@ -219,67 +253,83 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
      * The profile already runs 2 rounds internally for reliability.
      */
     fun enableFcc() {
+        if (!beginHardwareOp()) {
+            log("Hardware busy — please wait for the current operation to finish.")
+            return
+        }
         update { copy(status = "applying", isBusy = true, busyProgress = 0f, message = "Enabling FCC mode...") }
         log("Enabling FCC mode...")
 
         runOnIO {
-            val profile = Profiles.load(app, "fcc.json")
-            log("Loaded FCC profile: ${profile.frames.size} frames, ${profile.rounds} rounds")
+            try {
+                val profile = Profiles.load(app, "fcc.json")
+                log("Loaded FCC profile: ${profile.frames.size} frames, ${profile.rounds} rounds")
 
-            val success = transport.sendFrames(
-                frames = profile.frames,
-                rounds = profile.rounds,
-                interFrameDelayMs = profile.interFrameDelay,
-                interRoundDelayMs = profile.interRoundDelay,
-                readWindowMs = profile.readWindowMs,
-                port = profile.port
-            ) { progress -> update { copy(busyProgress = progress) } }
+                val success = transport.sendFrames(
+                    frames = profile.frames,
+                    rounds = profile.rounds,
+                    interFrameDelayMs = profile.interFrameDelay,
+                    interRoundDelayMs = profile.interRoundDelay,
+                    readWindowMs = profile.readWindowMs,
+                    port = profile.port
+                ) { progress -> update { copy(busyProgress = progress) } }
 
-            if (success) {
-                update {
-                    copy(
-                        status = "fcc_enabled",
-                        message = "FCC mode enabled",
-                        isFccEnabled = true,
-                        isBusy = false,
-                        busyProgress = 1f,
-                        isConnected = true
-                    )
+                if (success) {
+                    update {
+                        copy(
+                            status = "fcc_enabled",
+                            message = "FCC mode enabled",
+                            isFccEnabled = true,
+                            isBusy = false,
+                            busyProgress = 1f,
+                            isConnected = true
+                        )
+                    }
+                    log("FCC mode enabled — ${profile.frames.size} frames sent")
+                } else {
+                    update {
+                        copy(
+                            status = "connected",
+                            message = "FCC apply failed — RC link unreachable. Make sure the drone is on and linked.",
+                            isBusy = false,
+                            busyProgress = 0f
+                        )
+                    }
+                    log("FCC apply failed — writes failed")
                 }
-                log("FCC mode enabled — ${profile.frames.size} frames sent")
-            } else {
-                update {
-                    copy(
-                        status = "connected",
-                        message = "FCC apply failed — RC link unreachable. Make sure the drone is on and linked.",
-                        isBusy = false,
-                        busyProgress = 0f
-                    )
-                }
-                log("FCC apply failed — writes failed")
+            } finally {
+                endHardwareOp()
             }
         }
     }
 
     /** Sends the CE restore command: a single frame that resets to factory region. */
     fun disableFcc() {
+        if (!beginHardwareOp()) {
+            log("Hardware busy — please wait for the current operation to finish.")
+            return
+        }
         update { copy(status = "restoring", isBusy = true, busyProgress = 0f, message = "Restoring CE mode...") }
         log("Restoring CE mode...")
 
         runOnIO {
-            val profile = Profiles.load(app, "ce_restore.json")
-            val success = transport.sendFrames(
-                frames = profile.frames,
-                rounds = profile.rounds,
-                readWindowMs = profile.readWindowMs
-            )
+            try {
+                val profile = Profiles.load(app, "ce_restore.json")
+                val success = transport.sendFrames(
+                    frames = profile.frames,
+                    rounds = profile.rounds,
+                    readWindowMs = profile.readWindowMs
+                )
 
-            if (success) {
-                update { copy(status = "connected", message = "CE mode restored", isFccEnabled = false, isBusy = false) }
-                log("CE mode restored")
-            } else {
-                update { copy(status = "connected", message = "CE restore failed — RC link unreachable", isBusy = false) }
-                log("CE restore failed")
+                if (success) {
+                    update { copy(status = "connected", message = "CE mode restored", isFccEnabled = false, isBusy = false) }
+                    log("CE mode restored")
+                } else {
+                    update { copy(status = "connected", message = "CE restore failed — RC link unreachable", isBusy = false) }
+                    log("CE restore failed")
+                }
+            } finally {
+                endHardwareOp()
             }
         }
     }
@@ -290,63 +340,55 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
      * Sends the 128-frame 4G activation profile.
      * The aircraft serial is embedded in each frame's payload at runtime.
      * 4G frames are sent via Unix domain socket (/duss/mb/0x205), not TCP.
+     *
+     * The socket does not respond, so this can only confirm the frames were
+     * written — never confirm the aircraft actually activated 4G. There is
+     * no "off" action: no send-only command exists to reliably deactivate it.
      */
-    fun enable4g() {
-        update { copy(is4gBusy = true, busyProgress = 0f, message = "Turning 4G on...") }
-        log("Enabling 4G...")
-
-        runOnIO {
-            val serial = getOrProbeSerial()
-            if (serial.isEmpty()) {
-                update {
-                    copy(is4gBusy = false, message = "4G needs the aircraft connected. Power on the drone and try again.")
-                }
-                log("4G failed — no aircraft serial")
-                return@runOnIO
-            }
-
-            val profile = Profiles.load4g(app, serial)
-            log("Loaded 4G profile: ${profile.frames.size} frames (serial: $serial)")
-
-            // 4G uses Unix domain socket, not TCP
-            val success = transport.sendFramesUnix(
-                frames = profile.frames,
-                interFrameDelayMs = profile.interFrameDelay
-            ) { progress -> update { copy(busyProgress = progress) } }
-
-            if (success) {
-                update { copy(is4gEnabled = true, is4gBusy = false, busyProgress = 0f, message = "4G enabled") }
-                log("4G enabled — ${profile.frames.size} frames sent via Unix socket")
-            } else {
-                update { copy(is4gBusy = false, message = "4G apply failed — is the 4G dongle connected?") }
-                log("4G apply failed — Unix socket unreachable")
-            }
+    fun send4gActivationFrames() {
+        if (!beginHardwareOp()) {
+            log("Hardware busy — please wait for the current operation to finish.")
+            return
         }
-    }
-
-    /** Disables 4G by re-applying FCC (keeps FCC on) or restoring CE. */
-    fun disable4g() {
-        update { copy(is4gBusy = true, message = "Turning 4G off...") }
-        log("Disabling 4G...")
+        update { copy(is4gBusy = true, busyProgress = 0f, fourGMessage = "") }
+        log("Sending 4G activation frames...")
 
         runOnIO {
-            if (_state.value.isFccEnabled) {
-                val fcc = Profiles.load(app, "fcc.json")
-                transport.sendFrames(fcc.frames, 1, fcc.interFrameDelay, 0, fcc.readWindowMs)
-                log("FCC re-applied (4G off)")
-            } else {
-                val ce = Profiles.load(app, "ce_restore.json")
-                transport.sendFrames(ce.frames, 1, ce.interFrameDelay, 0, ce.readWindowMs)
-                log("CE restored (4G off)")
+            try {
+                val serial = getOrProbeSerial()
+                if (serial.isEmpty()) {
+                    update {
+                        copy(is4gBusy = false, fourGMessage = "4G needs the aircraft connected. Power on the drone and try again.")
+                    }
+                    log("4G activation failed — no aircraft serial")
+                    return@runOnIO
+                }
+
+                val profile = Profiles.load4g(app, serial)
+                log("Loaded 4G profile: ${profile.frames.size} frames (serial: $serial)")
+
+                // 4G uses Unix domain socket, not TCP
+                val success = transport.sendFramesUnix(
+                    frames = profile.frames,
+                    interFrameDelayMs = profile.interFrameDelay
+                ) { progress -> update { copy(busyProgress = progress) } }
+
+                if (success) {
+                    update {
+                        copy(
+                            is4gBusy = false,
+                            busyProgress = 0f,
+                            fourGMessage = "All activation frames written successfully — check 4G status on the aircraft."
+                        )
+                    }
+                    log("4G activation: all ${profile.frames.size} frames written successfully via Unix socket")
+                } else {
+                    update { copy(is4gBusy = false, fourGMessage = "4G apply failed — is the 4G dongle connected?") }
+                    log("4G activation failed — at least one frame write failed on the Unix socket")
+                }
+            } finally {
+                endHardwareOp()
             }
-            update {
-                copy(
-                    is4gEnabled = false,
-                    is4gBusy = false,
-                    message = if (isFccEnabled) "4G disabled — FCC still active" else "4G disabled — CE restored"
-                )
-            }
-            log("4G disabled")
         }
     }
 
@@ -361,40 +403,48 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
      * @param on true for LED ON, false for LED OFF
      */
     fun setLed(on: Boolean) {
+        if (!beginHardwareOp()) {
+            log("Hardware busy — please wait for the current operation to finish.")
+            return
+        }
         update { copy(isLedBusy = true, ledStatus = if (on) "Turning LEDs on..." else "Turning LEDs off...") }
         log(if (on) "Turning LEDs on..." else "Turning LEDs off...")
 
         runOnIO {
-            val fileName = if (on) "led_on.json" else "led_off.json"
-            val profile = Profiles.load(app, fileName)
-            log("Loaded LED profile: ${profile.frames.size} frames (port ${profile.port})")
+            try {
+                val fileName = if (on) "led_on.json" else "led_off.json"
+                val profile = Profiles.load(app, fileName)
+                log("Loaded LED profile: ${profile.frames.size} frames (port ${profile.port})")
 
-            var anySuccess = false
+                var anySuccess = false
 
-            // Send the LED command twice with a 500ms delay for reliability
-            for (attempt in 0 until 2) {
-                if (attempt > 0) {
-                    delay(500)
+                // Send the LED command twice with a 500ms delay for reliability
+                for (attempt in 0 until 2) {
+                    if (attempt > 0) {
+                        delay(500)
+                    }
+
+                    val success = transport.sendFrames(
+                        frames = profile.frames,
+                        rounds = profile.rounds,
+                        interFrameDelayMs = profile.interFrameDelay,
+                        interRoundDelayMs = profile.interRoundDelay,
+                        readWindowMs = profile.readWindowMs,
+                        port = profile.port
+                    )
+
+                    if (success) anySuccess = true
                 }
 
-                val success = transport.sendFrames(
-                    frames = profile.frames,
-                    rounds = profile.rounds,
-                    interFrameDelayMs = profile.interFrameDelay,
-                    interRoundDelayMs = profile.interRoundDelay,
-                    readWindowMs = profile.readWindowMs,
-                    port = profile.port
-                )
-
-                if (success) anySuccess = true
-            }
-
-            if (anySuccess) {
-                update { copy(isLedBusy = false, ledStatus = if (on) "ON" else "OFF") }
-                log(if (on) "LEDs turned on" else "LEDs turned off")
-            } else {
-                update { copy(isLedBusy = false, ledStatus = "Failed — is DJI Fly running?") }
-                log("LED command failed — make sure DJI Fly is running with aircraft connected")
+                if (anySuccess) {
+                    update { copy(isLedBusy = false, ledStatus = if (on) "ON" else "OFF") }
+                    log(if (on) "LEDs turned on" else "LEDs turned off")
+                } else {
+                    update { copy(isLedBusy = false, ledStatus = "Failed — is DJI Fly running?") }
+                    log("LED command failed — make sure DJI Fly is running with aircraft connected")
+                }
+            } finally {
+                endHardwareOp()
             }
         }
     }
@@ -408,37 +458,53 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
      */
     fun queryDeviceInfo() {
         if (!isControllerReachable()) return
+        if (!beginHardwareOp()) {
+            log("Hardware busy — please wait for the current operation to finish.")
+            return
+        }
 
         update { copy(isQueryingInfo = true) }
         log("Querying device info...")
 
         runOnIO {
-            val profile = Profiles.load(app, "device_info.json")
-            val frame = profile.frames.first()
+            try {
+                val profile = Profiles.load(app, "device_info.json")
+                val frame = profile.frames.first()
 
-            val response = transport.sendAndReceive(frame, profile.readWindowMs)
+                val response = transport.sendAndReceive(frame, profile.readWindowMs)
 
-            if (response == null || response.isEmpty()) {
-                update { copy(isQueryingInfo = false, deviceInfo = "No response from controller") }
-                log("Device info: no response")
-                return@runOnIO
+                if (response == null || response.isEmpty()) {
+                    update { copy(isQueryingInfo = false, deviceInfo = "No response from controller") }
+                    log("Device info: no response")
+                    return@runOnIO
+                }
+
+                val info = formatVersionResponse(response)
+                update { copy(isQueryingInfo = false, deviceInfo = info) }
+                log("Device info received: ${response.size} bytes")
+            } finally {
+                endHardwareOp()
             }
-
-            val info = formatVersionResponse(response)
-            update { copy(isQueryingInfo = false, deviceInfo = info) }
-            log("Device info received: ${response.size} bytes")
         }
     }
 
     fun probeSerial() {
+        if (!beginHardwareOp()) {
+            log("Hardware busy — please wait for the current operation to finish.")
+            return
+        }
         log("Probing for aircraft serial...")
         runOnIO {
-            val serial = transport.probeSerial(2000)
-            if (serial.isNotEmpty()) {
-                update { copy(aircraftSerial = serial) }
-                log("Aircraft serial: $serial")
-            } else {
-                log("No serial detected — is the aircraft powered on?")
+            try {
+                val serial = transport.probeSerial(2000)
+                if (serial.isNotEmpty()) {
+                    update { copy(aircraftSerial = serial) }
+                    log("Aircraft serial: $serial")
+                } else {
+                    log("No serial detected — is the aircraft powered on?")
+                }
+            } finally {
+                endHardwareOp()
             }
         }
     }
