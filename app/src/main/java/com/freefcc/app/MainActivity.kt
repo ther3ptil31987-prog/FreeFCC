@@ -818,7 +818,7 @@ private fun SupportPage() {
             Text("About", color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             BodyText(
-                "FreeFCC sends DUMPL commands to your DJI controller to unlock FCC mode and enable 4G. " +
+                "FreeFCC sends DUML commands to your DJI controller to unlock FCC mode and enable 4G. " +
                 "It works fully offline with no server or license. " +
                 "The protocol is publicly documented in the dji-firmware-tools project.",
                 TextGray
@@ -830,7 +830,7 @@ private fun SupportPage() {
             Spacer(Modifier.height(12.dp))
             InfoRow("License", "AGPL-3.0")
             Spacer(Modifier.height(12.dp))
-            InfoRow("Protocol", "DUMPL")
+            InfoRow("Protocol", "DUML")
             Spacer(Modifier.height(12.dp))
             InfoRow("Source", "github.com/doesthings/FreeFCC")
             Spacer(Modifier.height(16.dp))

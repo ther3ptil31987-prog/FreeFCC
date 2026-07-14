@@ -7,9 +7,9 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /**
- * A single DUMPL command frame, before wire-encoding.
+ * A single DUML command frame, before wire-encoding.
  *
- * DUMPL is DJI's internal command protocol used over a local TCP proxy
+ * DUML is DJI's internal command protocol used over a local TCP proxy
  * (127.0.0.1:40009) on their controllers. Each frame is a self-contained
  * binary command with CRC checks.
  *
@@ -21,7 +21,7 @@ import java.net.Socket
  * @property dst      Destination byte — low 5 bits = device type, high 3 bits = index
  * @property payload  Raw payload bytes
  */
-data class DumplFrame(
+data class DumlFrame(
     val sender: Int,
     val cmdType: Int,
     val cmdSet: Int,
@@ -31,7 +31,7 @@ data class DumplFrame(
 )
 
 /**
- * Builds wire-format DUMPL frames from structured input.
+ * Builds wire-format DUML frames from structured input.
  *
  * Wire format (little-endian, 0x55 packet type):
  *   Byte  0       0x55 (magic)
@@ -48,12 +48,12 @@ data class DumplFrame(
  *
  * Reference: https://github.com/o-gs/dji-firmware-tools/blob/master/comm_dat2pcap.py
  */
-class DumplBuilder {
+class DumlBuilder {
 
     private var sequenceNumber: Int = 4096
 
-    /** Builds a single DUMPL frame as a byte array, ready to send over TCP. */
-    fun buildFrame(frame: DumplFrame): ByteArray {
+    /** Builds a single DUML frame as a byte array, ready to send over TCP. */
+    fun buildFrame(frame: DumlFrame): ByteArray {
         val payload = frame.payload
         val totalLength = payload.size + 13 // 11 header + payload + 2 CRC
 
@@ -191,19 +191,19 @@ class DumplBuilder {
 }
 
 /**
- * Sends DUMPL frames to the controller's local TCP proxy at 127.0.0.1:40009.
+ * Sends DUML frames to the controller's local TCP proxy at 127.0.0.1:40009.
  *
  * The proxy expects one frame per TCP connection: open, write, read ACK, close.
  * This matches the original DJI app and OpenFCC behaviour exactly.
  */
-class DumplTransport {
+class DumlTransport {
 
-    // Ports that DJI controllers may listen on for DUMPL commands.
+    // Ports that DJI controllers may listen on for DUML commands.
     // RC2 uses 40009. RC Pro 2 and RC Plus use 40007 or 8901-8904.
     private val SCAN_PORTS = listOf(PORT, PORT_LED, 8901, 8902, 8903, 8904)
 
     /**
-     * Finds which port the DUMPL proxy is listening on by trying each one.
+     * Finds which port the DUML proxy is listening on by trying each one.
      * Caches the result so subsequent calls don't need to scan.
      */
     private var discoveredPort: Int = -1
@@ -224,7 +224,7 @@ class DumplTransport {
 
     /**
      * Sends a list of frames over multiple rounds, discarding ACKs.
-     * Automatically finds the correct DUMPL port for the controller type.
+     * Automatically finds the correct DUML port for the controller type.
      *
      * @param onProgress Called with a 0..1 float as frames are sent
      * @return true if at least one frame was written successfully
@@ -266,7 +266,7 @@ class DumplTransport {
      * Sends a single frame and returns the raw response payload.
      * Used for request/response commands like version inquiry.
      *
-     * The response is a full DUMPL frame (0x55 header + payload + CRC).
+     * The response is a full DUML frame (0x55 header + payload + CRC).
      * This method extracts and returns just the payload bytes.
      *
      * @return response payload, or null if no response was received
@@ -296,7 +296,7 @@ class DumplTransport {
             val remaining = readBytes(input, totalLength - 11) ?: return null
             val response = header + remaining
 
-            return DumplBuilder.validateResponse(frame, response)
+            return DumlBuilder.validateResponse(frame, response)
 
         } catch (_: IOException) {
             return null
@@ -325,7 +325,7 @@ class DumplTransport {
     }
 
     /**
-     * Opens a TCP socket to the DUMPL proxy and listens for data
+     * Opens a TCP socket to the DUML proxy and listens for data
      * matching the given regex pattern.
      */
     private fun listenForSerial(pattern: Regex, timeoutMs: Int): String {
@@ -356,7 +356,7 @@ class DumplTransport {
     }
 
     /**
-     * Connects to the DUMPL proxy by scanning all known ports.
+     * Connects to the DUML proxy by scanning all known ports.
      * Caches the working port for subsequent calls.
      * Returns true if any port is reachable.
      */
@@ -371,7 +371,7 @@ class DumplTransport {
         return false
     }
 
-    /** Checks if the DUMPL proxy is reachable (controller is powered on). */
+    /** Checks if the DUML proxy is reachable (controller is powered on). */
     fun isReachable(port: Int = PORT): Boolean {
         var socket: Socket? = null
         return try {
@@ -465,7 +465,7 @@ class DumplTransport {
 
     companion object {
         private const val HOST = "127.0.0.1"
-        const val PORT = 40009       // Standard DUMPL proxy port (FCC, CE, device info)
+        const val PORT = 40009       // Standard DUML proxy port (FCC, CE, device info)
         const val PORT_LED = 40007   // LED control port
         // 4G frames go via Unix domain socket, not TCP
         private const val UNIX_SOCKET_4G = "/duss/mb/0x205"

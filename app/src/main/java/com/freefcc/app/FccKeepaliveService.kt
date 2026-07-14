@@ -50,7 +50,7 @@ class FccKeepaliveService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var keepaliveJob: Job? = null
-    private val transport = DumplTransport()
+    private val transport = DumlTransport()
 
     override fun onCreate() {
         super.onCreate()

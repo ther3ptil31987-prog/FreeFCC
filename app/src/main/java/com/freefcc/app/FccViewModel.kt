@@ -72,7 +72,7 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = _state.asStateFlow()
 
-    private val transport = DumplTransport()
+    private val transport = DumlTransport()
     private val prefs = app.getSharedPreferences("freefcc", Context.MODE_PRIVATE)
 
     /** Serializes every controller-/aircraft-facing operation so frames never overlap. */
@@ -144,7 +144,7 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
                 log("Auto-FCC: controller connected")
                 val detectedPort = transport.getDetectedPort()
                 if (detectedPort > 0) {
-                    log("DUMPL port detected: $detectedPort")
+                    log("DUML port detected: $detectedPort")
                 }
                 val serial = transport.probeSerial(1500)
                 update {
@@ -216,7 +216,7 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
     // --- Connection ---
 
     /**
-     * Connects to the DUMPL proxy, auto-detecting the correct port.
+     * Connects to the DUML proxy, auto-detecting the correct port.
      * Probes for the aircraft serial number after connecting.
      */
     fun connect() {
@@ -233,7 +233,7 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
                     log("Controller connected")
                     val detectedPort = transport.getDetectedPort()
                     if (detectedPort > 0) {
-                        log("DUMPL port detected: $detectedPort")
+                        log("DUML port detected: $detectedPort")
                     }
                     val serial = transport.probeSerial(1500)
                     update {
@@ -488,7 +488,7 @@ class FccViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /**
      * Turns the aircraft arm LEDs on or off.
-     * Uses port 40007 (different from the standard 40009 DUMPL port).
+     * Uses port 40007 (different from the standard 40009 DUML port).
      * Requires DJI Fly running with the aircraft connected.
      * Sends the command twice with a 500ms delay for reliability.
      *

@@ -5,11 +5,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Covers DumplBuilder.validateResponse() against the checklist Codex required in
+ * Covers DumlBuilder.validateResponse() against the checklist Codex required in
  * plan review: valid response, CRC-8, CRC-16, length, sequence, routing, command
  * set/ID, and the response bit — each isolated so only that one check fails.
  */
-class DumplResponseValidationTest {
+class DumlResponseValidationTest {
 
     private fun buildRawFrame(
         sender: Int,
@@ -25,7 +25,7 @@ class DumplResponseValidationTest {
         out[0] = 0x55
         out[1] = (totalLength and 0xFF).toByte()
         out[2] = (((totalLength shr 8) and 0x03) or 0x04).toByte()
-        out[3] = DumplBuilder.crc8(out, 0, 3).toByte()
+        out[3] = DumlBuilder.crc8(out, 0, 3).toByte()
         out[4] = sender.toByte()
         out[5] = dst.toByte()
         out[6] = (seq and 0xFF).toByte()
@@ -34,7 +34,7 @@ class DumplResponseValidationTest {
         out[9] = cmdSet.toByte()
         out[10] = cmdId.toByte()
         System.arraycopy(payload, 0, out, 11, payload.size)
-        val crc = DumplBuilder.crc16(out, 0, 11 + payload.size)
+        val crc = DumlBuilder.crc16(out, 0, 11 + payload.size)
         out[totalLength - 2] = (crc and 0xFF).toByte()
         out[totalLength - 1] = ((crc shr 8) and 0xFF).toByte()
         return out
@@ -56,27 +56,27 @@ class DumplResponseValidationTest {
     fun `valid response yields payload`() {
         val payload = byteArrayOf(9, 8, 7, 6)
         val response = validResponse(payload)
-        assertArrayEquals(payload, DumplBuilder.validateResponse(request, response))
+        assertArrayEquals(payload, DumlBuilder.validateResponse(request, response))
     }
 
     @Test
     fun `crc8 mismatch is rejected`() {
         val response = validResponse()
         response[3] = (response[3] + 1).toByte()
-        assertNull(DumplBuilder.validateResponse(request, response))
+        assertNull(DumlBuilder.validateResponse(request, response))
     }
 
     @Test
     fun `crc16 mismatch is rejected`() {
         val response = validResponse()
         response[response.size - 1] = (response[response.size - 1] + 1).toByte()
-        assertNull(DumplBuilder.validateResponse(request, response))
+        assertNull(DumlBuilder.validateResponse(request, response))
     }
 
     @Test
     fun `length mismatch is rejected`() {
         val response = validResponse() + byteArrayOf(0x00)
-        assertNull(DumplBuilder.validateResponse(request, response))
+        assertNull(DumlBuilder.validateResponse(request, response))
     }
 
     @Test
@@ -86,7 +86,7 @@ class DumplResponseValidationTest {
             cmdType = 0x80, cmdSet = 0x02, cmdId = 0x03,
             payload = byteArrayOf(9, 8, 7, 6)
         )
-        assertNull(DumplBuilder.validateResponse(request, response))
+        assertNull(DumlBuilder.validateResponse(request, response))
     }
 
     @Test
@@ -96,7 +96,7 @@ class DumplResponseValidationTest {
             cmdType = 0x80, cmdSet = 0x02, cmdId = 0x03,
             payload = byteArrayOf(9, 8, 7, 6)
         )
-        assertNull(DumplBuilder.validateResponse(request, response))
+        assertNull(DumlBuilder.validateResponse(request, response))
     }
 
     @Test
@@ -106,7 +106,7 @@ class DumplResponseValidationTest {
             cmdType = 0x80, cmdSet = 0x99, cmdId = 0x03,
             payload = byteArrayOf(9, 8, 7, 6)
         )
-        assertNull(DumplBuilder.validateResponse(request, response))
+        assertNull(DumlBuilder.validateResponse(request, response))
     }
 
     @Test
@@ -116,7 +116,7 @@ class DumplResponseValidationTest {
             cmdType = 0x80, cmdSet = 0x02, cmdId = 0x99,
             payload = byteArrayOf(9, 8, 7, 6)
         )
-        assertNull(DumplBuilder.validateResponse(request, response))
+        assertNull(DumlBuilder.validateResponse(request, response))
     }
 
     @Test
@@ -126,6 +126,6 @@ class DumplResponseValidationTest {
             cmdType = 0x00, cmdSet = 0x02, cmdId = 0x03, // response bit not set
             payload = byteArrayOf(9, 8, 7, 6)
         )
-        assertNull(DumplBuilder.validateResponse(request, response))
+        assertNull(DumlBuilder.validateResponse(request, response))
     }
 }

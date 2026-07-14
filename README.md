@@ -8,7 +8,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/doesthings/FreeFCC?style=flat-square)](https://github.com/doesthings/FreeFCC/releases)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20this%20project-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/freefcc)
 
-A free and open-source Android app that unlocks FCC mode, removes altitude limits (up to 3000m), removes distance limits, disables NFZ geofencing, sends 4G activation frames, and queries device info on DJI controllers. Currently only tested on the RC2. No server. No license. No tracking. Just raw DUMPL commands from JSON profile files.
+A free and open-source Android app that unlocks FCC mode, removes altitude limits (up to 3000m), removes distance limits, disables NFZ geofencing, sends 4G activation frames, and queries device info on DJI controllers. Currently only tested on the RC2. No server. No license. No tracking. Just raw DUML commands from JSON profile files.
 
 </div>
 
@@ -40,7 +40,7 @@ A free and open-source Android app that unlocks FCC mode, removes altitude limit
 | **Open Profiles** | Command frames are plain JSON files you can inspect and edit |
 | **No License** | No activation, no trial, no tracking, no server contact |
 
-> **Note on altitude/distance/NFZ unlock:** This is **not possible** via DUMPL commands alone. The 120m CE altitude limit is enforced by the **DJI Fly app** via a C0 class runtime flag that overrides flight controller parameters on every connection. No FCC unlock app can bypass this — it requires modifying the DJI Fly app itself or flashing patched firmware. DUMPL parameter writes set the FC values, but the Fly app overrides them. There is no known way to bypass this without modifying the DJI Fly app or flashing patched firmware.
+> **Note on altitude/distance/NFZ unlock:** This is **not possible** via DUML commands alone. The 120m CE altitude limit is enforced by the **DJI Fly app** via a C0 class runtime flag that overrides flight controller parameters on every connection. No FCC unlock app can bypass this — it requires modifying the DJI Fly app itself or flashing patched firmware. DUML parameter writes set the FC values, but the Fly app overrides them. There is no known way to bypass this without modifying the DJI Fly app or flashing patched firmware.
 
 ## Download
 
@@ -67,7 +67,7 @@ You need both. The helper apps let you sideload FreeFCC onto the RC2.
 | Other RC2 aircraft | RC2 | Should work | Unknown | Unknown | FCC profile is universal |
 | RC Pro 2 / RC Plus | All | Direct install | Use [freefcc-launcher](https://github.com/doesthings/freefcc-launcher) for 4G | - | FCC works without launcher |
 
-Tested on DJI RC 2 firmware v10.00.0700 and DJI RC Pro 2. Older firmware versions should also work, and future versions will likely continue to work unless DJI patches the DUMPL param write path.
+Tested on DJI RC 2 firmware v10.00.0700 and DJI RC Pro 2. Older firmware versions should also work, and future versions will likely continue to work unless DJI patches the DUML param write path.
 
 If you test it on a model or firmware version not listed here, please [open an issue](https://github.com/doesthings/FreeFCC/issues) and let me know.
 
@@ -120,7 +120,7 @@ Swipe from the right edge to open ATV Launcher. Open the Files app, find your fo
 2. Open FreeFCC and tap **Connect**
 3. Tap **Enable FCC Mode** and wait for the green checkmark
 4. For 4G: tap **Send 4G Activation Frames** (the drone needs to be connected so the app can read its serial number). The app only confirms all frames were written successfully — it cannot confirm the aircraft activated 4G, since the socket doesn't respond. Check the DJI Fly app or the Cellular Dongle itself.
-   > **Note:** 4G activation has not been tested on hardware yet. The frame format is based on the documented DUMPL protocol, but I have not confirmed it works in practice. If you try it, please [open an issue](https://github.com/doesthings/FreeFCC/issues) with the result.
+   > **Note:** 4G activation has not been tested on hardware yet. The frame format is based on the documented DUML protocol, but I have not confirmed it works in practice. If you try it, please [open an issue](https://github.com/doesthings/FreeFCC/issues) with the result.
 5. To stop: tap **Stop FCC Mode** to restore CE
 6. For LED: tap **LED ON** or **LED OFF** (requires DJI Fly running with aircraft connected)
 7. The **Info** tab lets you query the controller's hardware and firmware version
@@ -167,7 +167,7 @@ Every contribution helps cover server costs and keeps development going. Thank y
 
 ## How It Works
 
-The app sends DUMPL commands to the controller's local TCP proxy at `127.0.0.1:40009`. DUMPL is DJI's internal command protocol, publicly documented in the [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project.
+The app sends DUML commands to the controller's local TCP proxy at `127.0.0.1:40009`. DUML is DJI's internal command protocol, publicly documented in the [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project.
 
 Each command is a small binary packet with a magic byte (`0x55`), a header with sender and receiver info, a payload, and two CRC checksums. The app builds these packets from JSON profile files and sends them over TCP, one packet per connection.
 
@@ -179,11 +179,11 @@ One of the frames (frame 2) sends an Assistant Unlock command (cmd 0xDF) to the 
 
 ### 4G Profile
 
-128 frames sent in a single round with 10ms between each. Each frame carries the aircraft's serial number in its payload. The serial is read from the controller at runtime by listening for telemetry on the DUMPL socket.
+128 frames sent in a single round with 10ms between each. Each frame carries the aircraft's serial number in its payload. The serial is read from the controller at runtime by listening for telemetry on the DUML socket.
 
 **How the 4G activation frames are sent:**
 
-Unlike FCC which goes through the standard DUMPL TCP proxy on port 40009, 4G frames are sent via a Unix domain socket at `/duss/mb/0x205` (abstract namespace). This is a separate DJI internal command bus that talks directly to the cellular/4G module. The app opens a new `LocalSocket` connection for each frame, writes the frame bytes, flushes, and closes. No ACK is read back since the 4G module does not respond on this socket — the app can only confirm the frames were written, never that the aircraft actually activated 4G.
+Unlike FCC which goes through the standard DUML TCP proxy on port 40009, 4G frames are sent via a Unix domain socket at `/duss/mb/0x205` (abstract namespace). This is a separate DJI internal command bus that talks directly to the cellular/4G module. The app opens a new `LocalSocket` connection for each frame, writes the frame bytes, flushes, and closes. No ACK is read back since the 4G module does not respond on this socket — the app can only confirm the frames were written, never that the aircraft actually activated 4G.
 
 The frame format is:
 - `sender = 2` (CAMERA)
@@ -217,13 +217,13 @@ You can open these files in any text editor, read every byte that gets sent, and
 
 ### How the Frames Were Obtained
 
-The DUMPL proxy on DJI controllers listens on `127.0.0.1:40009` and accepts plain unencrypted TCP connections. The command frames were identified by capturing loopback traffic on the controller while the radio was active, then extracting the `0x55`-prefixed DUMPL packets from the capture:
+The DUML proxy on DJI controllers listens on `127.0.0.1:40009` and accepts plain unencrypted TCP connections. The command frames were identified by capturing loopback traffic on the controller while the radio was active, then extracting the `0x55`-prefixed DUML packets from the capture:
 
 ```bash
 tcpdump -i lo -w /sdcard/capture.pcap port 40009
 ```
 
-The frames are plaintext on the local socket with no encryption. Once captured, the payloads were decoded using the publicly documented command set and device type enums from the [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project (GPL-3.0). This project's `DumplBuilder` class implements the same CRC-8 (polynomial 0x8C, init 0x77) and CRC-16 (polynomial 0x1021, init 0x3692) as the reference implementation to build valid frames from the decoded command definitions.
+The frames are plaintext on the local socket with no encryption. Once captured, the payloads were decoded using the publicly documented command set and device type enums from the [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project (GPL-3.0). This project's `DumlBuilder` class implements the same CRC-8 (polynomial 0x8C, init 0x77) and CRC-16 (polynomial 0x1021, init 0x3692) as the reference implementation to build valid frames from the decoded command definitions.
 
 ## Project Structure
 
@@ -237,7 +237,7 @@ app/src/main/
     led_on.json        1 frame, LED on (port 40007)
     led_off.json       1 frame, LED off (port 40007)
   java/com/freefcc/app/
-    DumplTransport.kt  Frame builder (CRC-8/16) + TCP socket I/O
+    DumlTransport.kt  Frame builder (CRC-8/16) + TCP socket I/O
     Profiles.kt        JSON profile loader
     FccViewModel.kt    State management + business logic
     MainActivity.kt    Compose UI with animations
@@ -292,7 +292,7 @@ CI builds can sign via repository secrets instead of the local file: set `SIGNIN
 
 AGPL-3.0. See [LICENSE](LICENSE).
 
-The DUMPL protocol implementation is based on the publicly documented [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project (GPL-3.0).
+The DUML protocol implementation is based on the publicly documented [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project (GPL-3.0).
 
 ## Contact
 

@@ -4,11 +4,11 @@ import android.content.Context
 import org.json.JSONObject
 
 /**
- * Loads DUMPL command profiles from JSON files in app/src/main/assets/profiles/.
+ * Loads DUML command profiles from JSON files in app/src/main/assets/profiles/.
  *
  * Profiles are plain JSON — no encryption, no obfuscation. Each file defines
- * a sequence of DUMPL frames with timing parameters. The app reads them at
- * runtime, builds wire-format frames via [DumplBuilder], and sends the raw
+ * a sequence of DUML frames with timing parameters. The app reads them at
+ * runtime, builds wire-format frames via [DumlBuilder], and sends the raw
  * bytes to the controller.
  */
 object Profiles {
@@ -53,13 +53,13 @@ object Profiles {
         val useWrapper = obj.optBoolean("wrapper", false)
 
         val framesArray = obj.getJSONArray("frames")
-        val builder = DumplBuilder()
+        val builder = DumlBuilder()
         val frames = (0 until framesArray.length()).map { i ->
             val f = framesArray.getJSONObject(i)
             // Allow per-frame override of sender and cmd_type
             val frameSender = if (f.has("sender")) f.getInt("sender") else sender
             val frameCmdType = if (f.has("cmd_type")) f.getInt("cmd_type") else cmdType
-            val inner = builder.buildFrame(DumplFrame(
+            val inner = builder.buildFrame(DumlFrame(
                 sender = frameSender,
                 cmdType = frameCmdType,
                 cmdSet = f.getInt("s"),
@@ -101,9 +101,9 @@ object Profiles {
         System.arraycopy(serialBytes, 0, payload, prefix.size, serialBytes.size)
 
         // Generate all 128 frames
-        val builder = DumplBuilder()
+        val builder = DumlBuilder()
         val frames = (0 until frameCount).map { i ->
-            builder.buildFrame(DumplFrame(
+            builder.buildFrame(DumlFrame(
                 sender = sender,
                 cmdType = cmdType,
                 cmdSet = cmdSet,
@@ -130,7 +130,7 @@ object Profiles {
     }
 
     /**
-     * Wraps an inner DUMPL frame with the 8-byte outer header used by
+     * Wraps an inner DUML frame with the 8-byte outer header used by
      * certain commands (like LED control on port 40007).
      *
      * Format: [0x55][0xCC][0x30][0x75][4-byte LE length][inner frame]
