@@ -225,9 +225,11 @@ class DumlTransport {
     /**
      * Sends a list of frames over multiple rounds, discarding ACKs.
      * Automatically finds the correct DUML port for the controller type.
+     * Attempts every frame regardless of earlier failures, but only
+     * returns true if every single write succeeded.
      *
      * @param onProgress Called with a 0..1 float as frames are sent
-     * @return true if at least one frame was written successfully
+     * @return true if every frame write succeeded (false for an empty frame list)
      */
     fun sendFrames(
         frames: List<ByteArray>,
@@ -238,19 +240,19 @@ class DumlTransport {
         port: Int = PORT,
         onProgress: (Float) -> Unit = {}
     ): Boolean {
+        if (frames.isEmpty()) return false
+
         // If port is the default (40009), scan for the actual working port.
         // If port is explicitly set (e.g. 40007 for LED), use it directly.
         val effectivePort = if (port == PORT) findWorkingPort() else port
 
-        var anySuccess = false
+        val results = mutableListOf<Boolean>()
         val totalSends = frames.size * rounds
         var sent = 0
 
         for (round in 0 until rounds) {
             for (frame in frames) {
-                if (sendOneFrame(frame, readWindowMs, effectivePort)) {
-                    anySuccess = true
-                }
+                results.add(sendOneFrame(frame, readWindowMs, effectivePort))
                 sent++
                 onProgress(sent.toFloat() / totalSends)
                 if (interFrameDelayMs > 0) Thread.sleep(interFrameDelayMs)
@@ -259,7 +261,7 @@ class DumlTransport {
                 Thread.sleep(interRoundDelayMs)
             }
         }
-        return anySuccess
+        return allFramesSucceeded(results)
     }
 
     /**
@@ -486,6 +488,10 @@ class DumlTransport {
 
         /** Settle delay after reading the ACK, before the next frame. */
         private const val POST_ACK_SETTLE_MS = 20L
+
+        /** True only if every send in the series succeeded and the series was non-empty. */
+        internal fun allFramesSucceeded(results: List<Boolean>): Boolean =
+            results.isNotEmpty() && results.all { it }
     }
 
     /** Reused read buffer for ACK reads — avoids a per-frame allocation. */
