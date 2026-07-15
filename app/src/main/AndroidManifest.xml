@@ -4,7 +4,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -38,6 +37,9 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <!-- exported=true is left as-is (S-011): flipping it to false needs a
+             logged RC2 reboot test confirming BOOT_COMPLETED is still
+             delivered, which requires physical hardware not available here. -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
