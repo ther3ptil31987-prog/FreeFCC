@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EdgeHatch</string>
+
+    <string name="header_title">EdgeHatch</string>
+    <string name="header_summary">A slim handle at the screen edge opens a small app launcher over DJI Fly.</string>
+
+    <string name="enable_title">Edge handle</string>
+    <string name="enable_summary">Show the handle and keep it running.</string>
+
+    <string name="overlay_title">Display over other apps</string>
+    <string name="overlay_summary">Needed to draw the handle on top of DJI Fly.</string>
+    <string name="overlay_grant">Grant permission</string>
+
+    <string name="autostart_title">Start after reboot</string>
+    <string name="autostart_summary">Bring the handle back when the controller restarts.</string>
+
+    <string name="side_title">Handle side</string>
+    <string name="side_left">Left</string>
+    <string name="side_right">Right</string>
+
+    <string name="appearance_title">Handle appearance</string>
+    <string name="vertical_title">Vertical position</string>
+    <string name="width_title">Width</string>
+    <string name="height_title">Height</string>
+    <string name="opacity_title">Opacity</string>
+
+    <string name="trigger_title">Open with</string>
+    <string name="trigger_tap">Tap</string>
+    <string name="trigger_swipe">Swipe inward</string>
+
+    <string name="apps_title">Apps in the panel</string>
+    <string name="apps_summary">Choose which apps appear when you open the handle.</string>
+
+    <string name="panel_empty">No apps selected yet. Pick apps in EdgeHatch.</string>
+
+    <string name="notif_channel">Edge handle</string>
+    <string name="notif_channel_desc">Keeps the edge handle available.</string>
+    <string name="notif_title">EdgeHatch active</string>
+    <string name="notif_text">Tap the edge handle to open your apps.</string>
+    <string name="notif_stop">Stop</string>
+
+    <string name="cd_app_icon">App icon</string>
+</resources>
