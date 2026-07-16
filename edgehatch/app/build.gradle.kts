@@ -1,7 +1,26 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// Optional release signing. Reads edgehatch/keystore.properties (git-ignored)
+// or the matching EDGEHATCH_* environment variables. No keystore or secret is
+// committed; when none is configured the release build is produced unsigned.
+// See README.md ("Signing & release") for the keytool/apksigner steps.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+val releaseStoreFile = keystoreProps.getProperty("storeFile") ?: System.getenv("EDGEHATCH_STORE_FILE")
+val releaseStorePassword = keystoreProps.getProperty("storePassword") ?: System.getenv("EDGEHATCH_STORE_PASSWORD")
+val releaseKeyAlias = keystoreProps.getProperty("keyAlias") ?: System.getenv("EDGEHATCH_KEY_ALIAS")
+val releaseKeyPassword = keystoreProps.getProperty("keyPassword") ?: System.getenv("EDGEHATCH_KEY_PASSWORD")
+val hasReleaseSigning = !releaseStoreFile.isNullOrBlank() &&
+    !releaseStorePassword.isNullOrBlank() &&
+    !releaseKeyAlias.isNullOrBlank() &&
+    !releaseKeyPassword.isNullOrBlank()
 
 android {
     namespace = "app.edgehatch.launcher"
@@ -17,6 +36,19 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -25,9 +57,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // No signingConfig here: the helper is signed locally with a
-            // dedicated, git-ignored keystore. An unsigned release build is
-            // produced when no keystore is configured.
+            // Signed only when a keystore is configured (see above); otherwise
+            // the release APK is unsigned.
+            signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else null
         }
     }
 

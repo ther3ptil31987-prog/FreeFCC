@@ -82,10 +82,16 @@ for: `CAMERA`, `FLASHLIGHT`, `MediaProjection`, `SCREENSHOT`, `Shizuku`,
 
 ## Signing & delivery
 
-The helper is signed locally with a dedicated, git-ignored keystore (never a
-real keystore in a fork/PR context). The shipped helper pack contains only APKs
-reproducibly built from this tree, plus this file, `THIRD_PARTY_NOTICES`, the
-build instructions, the source commit id, and each APK's SHA-256.
+EdgeHatch is signed locally with a dedicated, git-ignored keystore; no keystore
+or secret is ever committed. The Gradle build reads `keystore.properties`
+(git-ignored) or the `EDGEHATCH_*` environment variables and signs the release
+with v1+v2. An unsigned `assembleRelease` build is only a local / RC2 test build
+and is never distributed. Concrete `keytool`/`apksigner`/SHA-256 steps are in
+`README.md`; `scripts/build-release-pack.sh` is fail-closed — it produces the
+delivery pack (signed APK + this file + `THIRD_PARTY_NOTICES` + source commit id
++ `SHA256SUMS.txt`, under the git-ignored `build/`) only when the `edgehatch/`
+tree is clean vs `HEAD`, a keystore is configured, and the APK is signed and
+passes `apksigner verify`; otherwise it aborts.
 
 ## `_m3` layout note
 
