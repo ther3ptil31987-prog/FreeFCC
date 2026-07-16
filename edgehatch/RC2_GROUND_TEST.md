@@ -4,7 +4,7 @@ Versioniertes Hardware-Abnahmeprotokoll (Teil des `edgehatch/`-Baums). Enthält
 keine vorausgefüllten Ergebnisse; wird auf der Hardware ausgefüllt und dann an
 Claude/Codex zurückgegeben.
 
-- **Commit unter Test:** _(EdgeHatch-Rebrand-Commit-ID hier eintragen)_, App `app.edgehatch.launcher`
+- **Commit unter Test:** `0d7f034` (EdgeHatch-Rebrand auf `s012-edgehatch`), App `app.edgehatch.launcher`
 - **Grundregel:** Nur am **Boden**, **keine Motoren/Propeller**, DJI Fly im
   Vordergrund. **Kein Flugtest**, bevor Overlay-Einblendung und -Abschaltung
   eindeutig beherrscht sind.
