@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal, privacy-preserving config. This is NOT a disability aid; it is a
+  high-privilege COMPATIBILITY mode that only hosts the edge overlay (an
+  accessibility overlay window) on devices where SYSTEM_ALERT_WINDOW cannot be
+  granted (e.g. the DJI RC 2). isAccessibilityTool is therefore false
+  (truthful). The service retrieves no window content, requests no event
+  feedback, and inspects no events.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/accessibility_description"
+    android:isAccessibilityTool="false"
+    android:notificationTimeout="0"
+    android:settingsActivity="app.edgehatch.launcher.MainActivity"
+    android:summary="@string/accessibility_summary" />

@@ -50,6 +50,23 @@
                 android:value="Edge handle overlay that opens a small app launcher panel" />
         </service>
 
+        <!-- Optional overlay path for devices where SYSTEM_ALERT_WINDOW cannot be
+             granted (e.g. DJI RC 2): draws the handle in an accessibility overlay
+             window. Bound only by the system (BIND_ACCESSIBILITY_SERVICE); reads
+             no window content (see accessibility_service_config). -->
+        <service
+            android:name=".EdgeAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.IBinder
 import android.provider.Settings
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.WindowManager
 
@@ -63,6 +64,12 @@ class EdgeOverlayService : Service() {
         startForeground(NOTIF_ID, buildNotification())
 
         if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        // Yield to the accessibility path when it is active, so the handle is
+        // never drawn twice (that path draws without the overlay permission).
+        if (EdgeAccessibilityService.isConnected()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -147,26 +154,30 @@ class EdgeOverlayService : Service() {
             stopSelf()
             return
         }
-        val config = prefs.snapshot()
-        val onLeft = config.side == HandleSide.LEFT
-        val apps = repo.loadSelectedApps(config.selected)
-        val view = EdgePanelView(
-            context = this,
-            apps = apps,
-            onLeft = onLeft,
-            onAppSelected = { entry -> launchApp(entry); closePanel() },
-            onDismiss = { closePanel() },
-        )
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        )
-        runCatching { windowManager.addView(view, params) }
-            .onSuccess { panelView = view }
-            .onFailure { closePanel() }
+        // Themed context so EdgePanelView's Material views inflate from a service
+        // context; the whole build is guarded so it can never crash the process.
+        runCatching {
+            val config = prefs.snapshot()
+            val onLeft = config.side == HandleSide.LEFT
+            val apps = repo.loadSelectedApps(config.selected)
+            val themed = ContextThemeWrapper(this, R.style.Theme_EdgeHatch)
+            val view = EdgePanelView(
+                context = themed,
+                apps = apps,
+                onLeft = onLeft,
+                onAppSelected = { entry -> launchApp(entry); closePanel() },
+                onDismiss = { closePanel() },
+            )
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT,
+            )
+            windowManager.addView(view, params)
+            panelView = view
+        }.onFailure { closePanel() }
     }
 
     private fun closePanel() {
@@ -235,11 +246,14 @@ class EdgeOverlayService : Service() {
             )
         }
 
-        /** Ask the running service to stop and remove its views. */
-        fun stop(context: Context) {
-            context.startService(
-                Intent(context, EdgeOverlayService::class.java).setAction(ACTION_STOP),
-            )
+        /**
+         * Stop the overlay service and remove its views — the programmatic
+         * yield/disable path. Uses `stopService` directly (deterministic, no
+         * START_STICKY relaunch). The internal [ACTION_STOP] is reserved for the
+         * notification's Stop action only.
+         */
+        fun stopNow(context: Context) {
+            context.stopService(Intent(context, EdgeOverlayService::class.java))
         }
     }
 }

@@ -1,4 +1,4 @@
-# EdgeHatch (`edgehatch/`)
+# EdgeHatch
 
 EdgeHatch is an independent, self-contained Android edge launcher
 (`app.edgehatch.launcher`). It draws a slim handle at the screen edge; tapping or
@@ -22,7 +22,7 @@ and `THIRD_PARTY_NOTICES` for licenses.
 
 ## Build, test, verify (reproducible)
 
-Run everything from `edgehatch/`:
+Run everything from the project root:
 
 ```bash
 # Unit tests (pure JVM: gesture, boot gate, clamping, snapshot ordering)
@@ -41,21 +41,71 @@ Run everything from `edgehatch/`:
 
 `gradle/verification-metadata.xml` pins every resolved dependency by SHA-256
 (no MD5/SHA-1, no trust exceptions). `scripts/forbidden-scan.sh` fails if any
-stripped capability (accessibility, automation/root, secure-settings, screenshot,
-camera, split-screen, notification listening, all-packages visibility, Glide,
-etc.) reappears in source, manifest, Gradle or resources.
+stripped capability (automation/root, secure-settings, screenshot, camera,
+split-screen, notification listening, all-packages visibility, Glide, etc.)
+reappears in source, manifest, Gradle or resources, **and** enforces that the one
+accessibility service (below) stays limited to overlay hosting — the permission
+only in the manifest, the accessibility overlay-window type only in that service,
+and screen-content / events / nodes / gesture-dispatch / global-actions all at
+zero.
 
 ## Permissions
 
 Declared, and only these:
 
-- `SYSTEM_ALERT_WINDOW` — draw the edge handle / panel over other apps.
+- `SYSTEM_ALERT_WINDOW` — draw the edge handle / panel over other apps (overlay mode).
 - `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` — keep the overlay alive.
-- `RECEIVE_BOOT_COMPLETED` — re-arm the overlay after reboot (opt-in only).
+- `RECEIVE_BOOT_COMPLETED` — re-arm the overlay after reboot (opt-in; overlay mode only).
+- `BIND_ACCESSIBILITY_SERVICE` (on the optional service) — see **Accessibility mode** below.
 
 App visibility uses a scoped `<queries>` MAIN/LAUNCHER element plus the explicit
-DJI Fly packages — **not** `QUERY_ALL_PACKAGES`. There is no accessibility
-service, no automation/root/ADB, no notification listener, and no network access.
+DJI Fly packages — **not** `QUERY_ALL_PACKAGES`. There is no automation/root/ADB,
+no notification listener, and no network access.
+
+### Accessibility mode (RC 2 compatibility)
+
+On locked devices such as the DJI RC 2, `SYSTEM_ALERT_WINDOW` cannot be granted.
+For those, EdgeHatch ships an **optional** accessibility service — a
+**high-privilege compatibility mode, not a disability aid** — that hosts the same
+edge handle in an accessibility overlay window, without the overlay permission. It
+is deliberately minimal: `isAccessibilityTool=false`, `canRetrieveWindowContent=false`,
+`onAccessibilityEvent` is a no-op, and it uses no node, event, gesture,
+global-action or window-inspection API (enforced by `forbidden-scan.sh`). Only one
+drawer is ever active — the accessibility path takes priority over the
+foreground-service overlay so the handle is never drawn twice. Reboot behaviour
+differs by mode: in accessibility mode the handle returns automatically while the
+service stays enabled; in overlay mode it returns only with "Start after reboot".
+
+## Install on a locked device (DJI RC 2)
+
+`SYSTEM_ALERT_WINDOW`, changing the default launcher, and enabling accessibility
+services are all restricted for side-loaded apps on the RC 2. Enabling the
+accessibility service requires the app to be installed by an installer that
+attributes it to a trusted source (so it is not treated as "unknown source").
+
+**How to obtain such an installer is out of scope for this project, and
+EdgeHatch neither ships nor endorses one.** Use only an installer you already
+trust — for example one that ships with the device, or a package installer you
+build yourself from audited source. Do **not** side-load an unverified or
+unknown-provenance installer APK.
+
+> Provenance note (honest): our own RC 2 bring-up used a redistributed
+> `com.android.packageinstaller` APK whose certificate carries only a
+> self-signed "DJI" free-text DN of **unproven origin**, and whose package name
+> can collide with the device's system installer. That was a **provenance-open
+> test path**, adequate to prove EdgeHatch's accessibility overlay works — it is
+> **not** a recommendation to install or distribute that APK.
+
+Once EdgeHatch is installed by a trusted installer:
+
+1. Open **Accessibility mode** → enable the EdgeHatch service under Accessibility,
+   then turn on **Edge handle**. (If the overlay permission *can* be granted on
+   your device, use that instead — the accessibility service is not needed there.)
+2. Select the apps for the panel (e.g. DJI Fly, a file manager) and drive over
+   DJI Fly. Validate with `RC2_GROUND_TEST.md` — ground only, no propellers.
+
+EdgeHatch does **not** need to be the default launcher; it overlays whatever is in
+the foreground (DJI Fly), so it works even where the home role cannot be changed.
 
 ## Signing & release
 

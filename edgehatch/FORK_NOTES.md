@@ -30,17 +30,32 @@ inline where used:
 
 ## What was deliberately NOT carried over
 
-The reference project also ships an AccessibilityService, a Shizuku/root
-automation engine, secure-settings granting, split-screen, notification
-listening, a quick-settings tile, screenshot/flashlight/camera actions, icon
-packs and a Glide image pipeline. **None of these exist here** — not their code,
-permissions, dependencies, or resources. The static forbidden-feature scan (see
-below) enforces their absence.
+The reference project also ships an AccessibilityService **used for screen access
+and automation**, a Shizuku/root automation engine, secure-settings granting,
+split-screen, notification listening, a quick-settings tile,
+screenshot/flashlight/camera actions, icon packs and a Glide image pipeline.
+**None of that automation exists here** — not its code, permissions,
+dependencies, or resources. The forbidden-feature scan enforces the absence of
+screen access, events, nodes, gesture dispatch and global actions.
 
-## The nine components
+### RC 2 exception: a narrow overlay-host accessibility service (S-014)
+
+Locked devices (DJI RC 2) cannot grant `SYSTEM_ALERT_WINDOW`. For those only,
+EdgeHatch adds an **optional** accessibility service that is a **high-privilege
+compatibility mode — not a disability aid and not an automation engine**: it
+hosts the same edge handle in an accessibility overlay window and nothing else.
+`isAccessibilityTool=false`, `canRetrieveWindowContent=false`,
+`onAccessibilityEvent` is a no-op, and it uses no node / event / gesture /
+global-action API. The scan allows `BIND_ACCESSIBILITY_SERVICE` only in the
+manifest and the accessibility overlay-window type only in that one service, and
+keeps every automation/screen-access token at zero.
+
+## The components
 
 `EdgeOverlayService`, `EdgeHandleView`, `EdgePanelView`, `LauncherAppRepository`,
-`AppEntry`, `EdgePreferences`, `MainActivity`, `BootReceiver`, `SidePanelApp`.
+`AppEntry`, `EdgePreferences`, `MainActivity`, `BootReceiver`, `SidePanelApp`,
+plus (S-014) `EdgeAccessibilityService` (the RC 2 overlay-host service) and
+`DrawPolicy` (the pure single-drawer decision, unit-tested).
 
 Icons come straight from `PackageManager` / launcher activities (no Glide). The
 app list uses a scoped `<queries>` MAIN/LAUNCHER element plus the explicit DJI
@@ -72,13 +87,19 @@ pins every resolved artifact by SHA-256.
 
 ## Forbidden-feature scan
 
-A static scan (`0` hits required) covers source, manifest, Gradle and resources
-for: `CAMERA`, `FLASHLIGHT`, `MediaProjection`, `SCREENSHOT`, `Shizuku`,
-`su -c`, `input keyevent`, `WRITE_SECURE_SETTINGS`, `toggle-split-screen`,
-`NotificationListenerService`, `BIND_ACCESSIBILITY_SERVICE`,
-`QUERY_ALL_PACKAGES`, `Glide`, `AppIconRequest`, `PanelAccessibilityService`,
-`AutomationManager`, `ActionDispatcher`, `HiddenApiBypass`, `freeform`,
-`POWER_MENU`, `one_handed`.
+A static scan (`0` hits required) covers source, manifest, Gradle and resources.
+It hard-forbids: `CAMERA`, `FLASHLIGHT`, `MediaProjection`, `SCREENSHOT`,
+`Shizuku`, `su -c`, `input keyevent`, `WRITE_SECURE_SETTINGS`,
+`toggle-split-screen`, `NotificationListenerService`, `QUERY_ALL_PACKAGES`,
+`Glide`, `AppIconRequest`, `PanelAccessibilityService`, `AutomationManager`,
+`ActionDispatcher`, `HiddenApiBypass`, `freeform`, `POWER_MENU`, `one_handed`.
+It also keeps the **accessibility abuse surface** at zero
+(`getRootInActiveWindow`, `AccessibilityNodeInfo`, `findAccessibilityNodeInfos`,
+`dispatchGesture`, `GestureDescription`, `performGlobalAction`, window
+inspection, touch-exploration / key-filter flags, `canRetrieveWindowContent="true"`).
+The single narrow exception (S-014): `BIND_ACCESSIBILITY_SERVICE` is allowed only
+in the manifest and the accessibility overlay-window type only in
+`EdgeAccessibilityService`; at most one `AccessibilityService` subclass may exist.
 
 ## Signing & delivery
 

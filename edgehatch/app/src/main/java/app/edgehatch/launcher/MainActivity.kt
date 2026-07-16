@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.CompoundButton
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -41,8 +42,19 @@ class MainActivity : AppCompatActivity() {
         prefs = EdgePreferences(this)
         repo = LauncherAppRepository(this)
 
+        // Show the running version so a sideloaded reinstall is verifiable on-device.
+        val version = try {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (_: Exception) {
+            null
+        }
+        binding.headerSummary.text =
+            getString(R.string.header_summary) + (version?.let { "\n\nBuild v$it" } ?: "")
+
         binding.enableSwitch.setOnCheckedChangeListener(::onEnableToggled)
         binding.grantOverlayButton.setOnClickListener { requestOverlayPermission() }
+        binding.batteryButton.setOnClickListener { openBatterySettings() }
+        binding.accessibilityButton.setOnClickListener { openAccessibilitySettings() }
 
         binding.autoStartSwitch.setOnCheckedChangeListener { _, checked ->
             if (!updatingUi) prefs.autoStart = checked // stored only; next boot
@@ -55,17 +67,27 @@ class MainActivity : AppCompatActivity() {
             scheduleApply()
         }
 
+        // Value bubble on the thumb while dragging.
+        binding.verticalSlider.setLabelFormatter { "${it.toInt()} %" }
+        binding.widthSlider.setLabelFormatter { "${it.toInt()} dp" }
+        binding.heightSlider.setLabelFormatter { "${it.toInt()} dp" }
+        binding.opacitySlider.setLabelFormatter { "${it.toInt()} %" }
+
         binding.verticalSlider.addOnChangeListener { _, value, fromUser ->
             if (!updatingUi && fromUser) { prefs.handleVerticalBias = value / 100f; scheduleApply() }
+            binding.verticalTitle.text = labelWithValue(R.string.vertical_title, value.toInt(), "%")
         }
         binding.widthSlider.addOnChangeListener { _, value, fromUser ->
             if (!updatingUi && fromUser) { prefs.handleWidthDp = value.toInt(); scheduleApply() }
+            binding.widthTitle.text = labelWithValue(R.string.width_title, value.toInt(), "dp")
         }
         binding.heightSlider.addOnChangeListener { _, value, fromUser ->
             if (!updatingUi && fromUser) { prefs.handleHeightDp = value.toInt(); scheduleApply() }
+            binding.heightTitle.text = labelWithValue(R.string.height_title, value.toInt(), "dp")
         }
         binding.opacitySlider.addOnChangeListener { _, value, fromUser ->
             if (!updatingUi && fromUser) { prefs.handleOpacity = value / 100f; scheduleApply() }
+            binding.opacityTitle.text = labelWithValue(R.string.opacity_title, value.toInt(), "%")
         }
 
         binding.tapSwitch.setOnCheckedChangeListener { btn, checked -> onTriggerToggled(btn, checked, isTap = true) }
@@ -78,9 +100,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshUi()
-        if (prefs.enabled && Settings.canDrawOverlays(this)) {
-            EdgeOverlayService.start(this)
-        }
+        if (prefs.enabled) activateDrawPath()
     }
 
     override fun onDestroy() {
@@ -88,10 +108,35 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    /** Which mechanism should draw right now (single source of truth). */
+    private fun currentDrawPath(): DrawPath = chooseDrawPath(
+        enabled = prefs.enabled,
+        accessibilityConnected = EdgeAccessibilityService.isConnected(),
+        canDrawOverlays = Settings.canDrawOverlays(this),
+    )
+
+    /** Start the correct drawer and ensure the other one is not also drawing. */
+    private fun activateDrawPath() {
+        when (currentDrawPath()) {
+            DrawPath.ACCESSIBILITY -> {
+                EdgeOverlayService.stopNow(this) // yield: never a double handle
+                EdgeAccessibilityService.refreshIfConnected()
+            }
+            DrawPath.OVERLAY -> EdgeOverlayService.start(this)
+            DrawPath.NONE -> {
+                EdgeOverlayService.stopNow(this)
+                EdgeAccessibilityService.refreshIfConnected() // removes its views if disabled
+            }
+        }
+    }
+
     private fun onEnableToggled(button: CompoundButton, checked: Boolean) {
         if (updatingUi) return
         if (checked) {
-            if (!Settings.canDrawOverlays(this)) {
+            val a11y = EdgeAccessibilityService.isConnected()
+            if (chooseDrawPath(true, a11y, Settings.canDrawOverlays(this)) == DrawPath.NONE) {
+                // No way to draw yet: revert and point at the overlay grant
+                // (the accessibility route is offered by its own card).
                 updatingUi = true
                 button.isChecked = false
                 updatingUi = false
@@ -99,10 +144,11 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             prefs.enabled = true
-            EdgeOverlayService.start(this)
+            activateDrawPath()
         } else {
             prefs.enabled = false
-            EdgeOverlayService.stop(this) // disable path: removes all overlay views now
+            EdgeOverlayService.stopNow(this) // removes FGS overlay views now
+            EdgeAccessibilityService.refreshIfConnected() // a11y path removes its views (disabled)
         }
         refreshUi()
     }
@@ -121,11 +167,73 @@ class MainActivity : AppCompatActivity() {
         scheduleApply()
     }
 
+    /**
+     * Open the "display over other apps" permission screen. The DJI RC 2's
+     * stripped settings can lack the per-app deep-link, so try progressively
+     * broader targets and never crash if none resolves.
+     */
     private fun requestOverlayPermission() {
-        startActivity(
+        val targets = listOf(
             Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
+            Intent(Settings.ACTION_SETTINGS),
         )
+        for (intent in targets) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // fall through to the next, broader fallback
+            }
+        }
+        Toast.makeText(this, R.string.overlay_manual_hint, Toast.LENGTH_LONG).show()
     }
+
+    /**
+     * Open battery-optimization settings so the persistent service is not killed
+     * on the RC 2. No permission needed; falls back to this app's detail page.
+     */
+    private fun openBatterySettings() {
+        val targets = listOf(
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
+            Intent(Settings.ACTION_SETTINGS),
+        )
+        for (intent in targets) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // fall through to the next fallback
+            }
+        }
+        Toast.makeText(this, R.string.battery_manual_hint, Toast.LENGTH_LONG).show()
+    }
+
+    /**
+     * Open the accessibility settings so the user can enable EdgeHatch's service.
+     * Same fallback cascade as the overlay path for the RC 2's stripped settings.
+     */
+    private fun openAccessibilitySettings() {
+        val targets = listOf(
+            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")),
+            Intent(Settings.ACTION_SETTINGS),
+        )
+        for (intent in targets) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // fall through to the next fallback
+            }
+        }
+        Toast.makeText(this, R.string.accessibility_manual_hint, Toast.LENGTH_LONG).show()
+    }
+
+    private fun labelWithValue(titleRes: Int, value: Int, unit: String): String =
+        "${getString(titleRes)}:  $value $unit"
 
     /** Debounce rapid (slider) changes into a single apply. */
     private fun scheduleApply() {
@@ -134,16 +242,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pushConfiguration() {
-        if (prefs.enabled && Settings.canDrawOverlays(this)) {
-            EdgeOverlayService.applyConfiguration(this)
+        when (currentDrawPath()) {
+            DrawPath.ACCESSIBILITY -> EdgeAccessibilityService.refreshIfConnected()
+            DrawPath.OVERLAY -> EdgeOverlayService.applyConfiguration(this)
+            DrawPath.NONE -> Unit
         }
     }
 
     private fun refreshUi() {
         updatingUi = true
         val hasOverlay = Settings.canDrawOverlays(this)
-        binding.overlayGrantedGroup.visibility = if (hasOverlay) ViewGroup.GONE else ViewGroup.VISIBLE
-        binding.enableSwitch.isChecked = prefs.enabled && hasOverlay
+        val hasA11y = EdgeAccessibilityService.isConnected()
+        // Always keep the card visible so the overlay setting stays reachable and
+        // its status is never ambiguous (the RC 2 has no easy Settings access).
+        binding.overlayGrantedGroup.visibility = ViewGroup.VISIBLE
+        binding.overlaySummary.setText(
+            if (hasOverlay) R.string.overlay_summary_granted else R.string.overlay_summary,
+        )
+        binding.grantOverlayButton.setText(
+            if (hasOverlay) R.string.overlay_open_setting else R.string.overlay_grant,
+        )
+        binding.accessibilitySummary.setText(
+            if (hasA11y) R.string.accessibility_granted else R.string.accessibility_card_summary,
+        )
+        // The handle can draw via the overlay permission OR the accessibility service.
+        binding.enableSwitch.isChecked = prefs.enabled && (hasOverlay || hasA11y)
         binding.autoStartSwitch.isChecked = prefs.autoStart
         binding.sideToggle.check(
             if (prefs.handleSide == HandleSide.LEFT) R.id.button_side_left else R.id.button_side_right,
@@ -155,6 +278,14 @@ class MainActivity : AppCompatActivity() {
             .coerceIn(EdgeLimits.HEIGHT_MIN.toFloat(), EdgeLimits.HEIGHT_MAX.toFloat())
         binding.opacitySlider.value = (prefs.handleOpacity * 100f)
             .coerceIn(EdgeLimits.OPACITY_MIN * 100f, EdgeLimits.OPACITY_MAX * 100f)
+        binding.verticalTitle.text =
+            labelWithValue(R.string.vertical_title, binding.verticalSlider.value.toInt(), "%")
+        binding.widthTitle.text =
+            labelWithValue(R.string.width_title, binding.widthSlider.value.toInt(), "dp")
+        binding.heightTitle.text =
+            labelWithValue(R.string.height_title, binding.heightSlider.value.toInt(), "dp")
+        binding.opacityTitle.text =
+            labelWithValue(R.string.opacity_title, binding.opacitySlider.value.toInt(), "%")
         binding.tapSwitch.isChecked = prefs.triggerTap
         binding.swipeSwitch.isChecked = prefs.triggerSwipe
         updatingUi = false

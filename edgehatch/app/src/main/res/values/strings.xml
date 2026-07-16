@@ -11,9 +11,26 @@
     <string name="overlay_title">Display over other apps</string>
     <string name="overlay_summary">Needed to draw the handle on top of DJI Fly.</string>
     <string name="overlay_grant">Grant permission</string>
+    <string name="overlay_open_setting">Open overlay setting</string>
+    <string name="overlay_summary_granted">Granted. Tap to review the setting.</string>
+    <string name="overlay_manual_hint">Could not open the settings screen. Grant \"Display over other apps\" for EdgeHatch manually.</string>
 
     <string name="autostart_title">Start after reboot</string>
-    <string name="autostart_summary">Bring the handle back when the controller restarts.</string>
+    <string name="autostart_summary">Bring the handle back after a restart. This applies to the overlay-permission mode. In accessibility mode the handle already returns automatically while the service stays enabled, so this switch has no extra effect there.</string>
+
+    <string name="battery_title">Unrestricted battery</string>
+    <string name="battery_summary">Exempt EdgeHatch from battery optimization so the handle survives reboots and backgrounding. Select EdgeHatch, then \"Don\'t optimize\".</string>
+    <string name="battery_button">Open battery settings</string>
+    <string name="battery_manual_hint">Could not open battery settings. Exempt EdgeHatch from battery optimization manually.</string>
+
+    <string name="accessibility_label">EdgeHatch edge handle</string>
+    <string name="accessibility_description">High-privilege compatibility mode — NOT a disability aid. Draws the EdgeHatch edge handle over other apps on locked devices where \"display over other apps\" cannot be granted (e.g. the DJI RC 2). It hosts only the overlay: it does not read screen content, inspect events, or perform gestures.</string>
+    <string name="accessibility_summary">Overlay-host compatibility mode; draws the handle without the overlay permission.</string>
+    <string name="accessibility_title">Accessibility mode (RC 2)</string>
+    <string name="accessibility_card_summary">A high-privilege compatibility mode for locked devices: if \"Display over other apps\" cannot be granted, enable EdgeHatch under Accessibility instead. It only hosts the handle (no screen reading). While enabled it also survives reboots on its own.</string>
+    <string name="accessibility_button">Open accessibility settings</string>
+    <string name="accessibility_granted">Enabled. Tap to review the setting.</string>
+    <string name="accessibility_manual_hint">Could not open accessibility settings. Enable EdgeHatch under Accessibility manually.</string>
 
     <string name="side_title">Handle side</string>
     <string name="side_left">Left</string>
