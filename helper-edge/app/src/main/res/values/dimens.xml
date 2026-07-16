@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Edge handle: slim so it barely covers the feed, tall so it stays easy
+         to find and swipe from. A tap or short inward swipe opens the panel. -->
+    <dimen name="edge_handle_width">14dp</dimen>
+    <dimen name="edge_handle_height">96dp</dimen>
+    <dimen name="edge_handle_corner">7dp</dimen>
+    <!-- Movement threshold before a touch counts (avoids accidental opens). -->
+    <dimen name="edge_trigger_slop">16dp</dimen>
+
+    <!-- App panel. -->
+    <dimen name="panel_card_width">280dp</dimen>
+    <dimen name="panel_card_margin">12dp</dimen>
+    <dimen name="panel_corner">20dp</dimen>
+    <dimen name="panel_max_height">420dp</dimen>
+
+    <!-- Rows / list. -->
+    <dimen name="app_icon_size">40dp</dimen>
+    <dimen name="app_row_min_height">56dp</dimen>
+
+    <!-- Settings screen rhythm (4/8dp system). -->
+    <dimen name="content_gutter">16dp</dimen>
+    <dimen name="section_gap">24dp</dimen>
+    <dimen name="card_padding">16dp</dimen>
+</resources>

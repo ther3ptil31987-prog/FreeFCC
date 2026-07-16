@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark variants (ui-ux-pro-max: desaturated/lighter tonal values, tested
+     separately for contrast — not inverted light values). -->
+<resources>
+    <color name="brand_green">#4ADE80</color>        <!-- lighter tone for dark -->
+    <color name="brand_green_on">#052E16</color>
+    <color name="background">#0F172A</color>
+    <color name="surface">#1E293B</color>
+    <color name="surface_container">#273248</color>
+    <color name="on_surface">#F8FAFC</color>
+    <color name="on_surface_muted">#94A3B8</color>       <!-- ~4.7:1 on surface -->
+    <color name="outline">#334155</color>
+    <color name="destructive">#F87171</color>
+
+    <color name="edge_handle">#FFFFFF</color>
+    <color name="scrim">#99000000</color>
+</resources>

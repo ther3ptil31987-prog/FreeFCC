@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FreeFCC Edge palette — designed with the ui-ux-pro-max skill (STANDARDS §12).
+  Design system: "Slate + run-green" technical utility (Inter character),
+  adapted to Material 3 DayNight. These are the LIGHT values; values-night/
+  overrides for dark. Green is used only for the single primary action.
+-->
+<resources>
+    <color name="brand_green">#15803D</color>        <!-- primary; ~4.9:1 with white -->
+    <color name="brand_green_on">#FFFFFF</color>
+    <color name="background">#F8FAFC</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_container">#F1F5F9</color>
+    <color name="on_surface">#0F172A</color>
+    <color name="on_surface_muted">#475569</color>       <!-- ~7:1 on white -->
+    <color name="outline">#CBD5E1</color>
+    <color name="destructive">#DC2626</color>
+
+    <!-- Adaptive launcher icon background. -->
+    <color name="ic_launcher_background">#0F172A</color>
+
+    <!-- Handle fill painted over other apps (mostly the DJI Fly camera feed).
+         Opaque white; the on-screen translucency is driven by the live opacity
+         slider via the view's alpha, so this stays a solid base colour. -->
+    <color name="edge_handle">#FFFFFF</color>
+    <!-- Panel scrim: strong enough to isolate the app list from the feed. -->
+    <color name="scrim">#80000000</color>
+</resources>
